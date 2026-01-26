@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createTaxRate, upsertCompanyAccounts, upsertTaxAccounts } from "@/lib/actions/arap-admin";
+import { createTaxRate, upsertTaxAccounts } from "@/lib/actions/arap-admin";
 import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -60,16 +60,6 @@ export default async function TaxPage() {
     throw new Error(accountError.message);
   }
 
-  const { data: companyAccounts, error: companyAccountError } = await supabaseAdmin()
-    .from("company_accounts")
-    .select("ar_control_account_id, ap_control_account_id")
-    .eq("company_id", companyId)
-    .maybeSingle();
-
-  if (companyAccountError) {
-    throw new Error(companyAccountError.message);
-  }
-
   async function createTaxAction(formData: FormData) {
     "use server";
     const tax = String(formData.get("tax") ?? "VAT").trim() as
@@ -109,20 +99,6 @@ export default async function TaxPage() {
       getfund_output_account_id: getfundOutput || null,
       wht_receivable_account_id: whtReceivable || null,
       wht_payable_account_id: whtPayable || null,
-    });
-
-    revalidatePath("/admin/tax");
-  }
-
-  async function companyAccountsAction(formData: FormData) {
-    "use server";
-    const arControl = String(formData.get("ar_control_account_id") ?? "");
-    const apControl = String(formData.get("ap_control_account_id") ?? "");
-
-    await upsertCompanyAccounts({
-      company_id: activeCompanyId,
-      ar_control_account_id: arControl || null,
-      ap_control_account_id: apControl || null,
     });
 
     revalidatePath("/admin/tax");
@@ -286,49 +262,6 @@ export default async function TaxPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Control accounts</CardTitle>
-          <CardDescription>Required for posting AR/AP and WHT.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form action={companyAccountsAction} className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="ar_control_account_id">AR control</Label>
-              <Select
-                id="ar_control_account_id"
-                name="ar_control_account_id"
-                defaultValue={companyAccounts?.ar_control_account_id ?? ""}
-              >
-                <option value="">Select account</option>
-                {(accounts ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ap_control_account_id">AP control</Label>
-              <Select
-                id="ap_control_account_id"
-                name="ap_control_account_id"
-                defaultValue={companyAccounts?.ap_control_account_id ?? ""}
-              >
-                <option value="">Select account</option>
-                {(accounts ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="md:col-span-2">
-              <Button type="submit">Save control accounts</Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
     </div>
   );
 }
