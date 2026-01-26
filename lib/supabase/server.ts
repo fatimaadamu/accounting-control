@@ -12,11 +12,11 @@ export const createSupabaseServerClient = async () => {
         get(name) {
           return cookieStore.get(name)?.value;
         },
-        set(name, value, options) {
-          cookieStore.set({ name, value, ...options });
+        set() {
+          // Read-only in Server Components to avoid cookie writes during SSR.
         },
-        remove(name, options) {
-          cookieStore.set({ name, value: "", ...options });
+        remove() {
+          // Read-only in Server Components to avoid cookie writes during SSR.
         },
       },
     }

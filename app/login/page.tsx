@@ -41,7 +41,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/");
+    router.replace("/api/auth/callback?next=/");
   };
 
   return (
