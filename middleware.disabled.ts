@@ -4,11 +4,20 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 const PROTECTED_PREFIXES = ["/admin", "/staff"];
+const PUBLIC_PREFIXES = ["/login", "/api", "/_next", "/favicon.ico"];
+const PUBLIC_FILES = ["/robots.txt", "/sitemap.xml"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isProtected =
-    pathname === "/" || PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const isPublicPrefix = PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const isPublicFile = PUBLIC_FILES.some((file) => pathname === file);
+  const isStaticAsset = pathname.includes(".") && !pathname.endsWith(".json");
+
+  if (isPublicPrefix || isPublicFile || isStaticAsset) {
+    return NextResponse.next();
+  }
+
+  const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (!isProtected) {
     return NextResponse.next();
@@ -36,8 +45,8 @@ export async function middleware(request: NextRequest) {
 
   if (!data.user) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/api/auth/callback";
-    redirectUrl.searchParams.set("next", pathname);
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("returnTo", pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
@@ -45,5 +54,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*", "/staff/:path*"],
+  matcher: ["/admin/:path*", "/staff/:path*"],
 };
