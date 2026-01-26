@@ -79,6 +79,13 @@ create table if not exists public.tax_accounts (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.company_accounts (
+  company_id uuid primary key references public.companies(id) on delete cascade,
+  ar_control_account_id uuid references public.accounts(id),
+  ap_control_account_id uuid references public.accounts(id),
+  created_at timestamptz not null default now()
+);
+
 -- =========================
 -- AR: Invoices & Receipts
 -- =========================
@@ -99,6 +106,7 @@ create table if not exists public.invoices (
   approved_by uuid,
   approved_at timestamptz,
   posted_at timestamptz,
+  reject_note text,
   created_at timestamptz not null default now(),
   unique(company_id, invoice_no)
 );
@@ -121,6 +129,7 @@ create table if not exists public.receipts (
   receipt_no text not null,
   receipt_date date not null,
   method payment_method not null,
+  cash_account_id uuid not null references public.accounts(id) on delete restrict,
   amount_received numeric(18,2) not null default 0,
   wht_deducted numeric(18,2) not null default 0,
   status doc_status not null default 'draft',
@@ -128,6 +137,7 @@ create table if not exists public.receipts (
   approved_by uuid,
   approved_at timestamptz,
   posted_at timestamptz,
+  reject_note text,
   created_at timestamptz not null default now(),
   unique(company_id, receipt_no)
 );
@@ -159,6 +169,7 @@ create table if not exists public.bills (
   approved_by uuid,
   approved_at timestamptz,
   posted_at timestamptz,
+  reject_note text,
   created_at timestamptz not null default now(),
   unique(company_id, bill_no)
 );
@@ -179,6 +190,7 @@ create table if not exists public.payment_vouchers (
   voucher_no text not null,
   payment_date date not null,
   method payment_method not null,
+  cash_account_id uuid not null references public.accounts(id) on delete restrict,
   amount_paid numeric(18,2) not null default 0,
   wht_deducted numeric(18,2) not null default 0,
   status doc_status not null default 'draft',
@@ -186,6 +198,7 @@ create table if not exists public.payment_vouchers (
   approved_by uuid,
   approved_at timestamptz,
   posted_at timestamptz,
+  reject_note text,
   created_at timestamptz not null default now(),
   unique(company_id, voucher_no)
 );
