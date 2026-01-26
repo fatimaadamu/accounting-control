@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 
 import DocumentLinesForm from "@/components/document-lines-form";
+import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { approveBill, createBillDraft, getApReconciliation, postBill } from "@/lib/actions/arap";
+import {
+  approveBill,
+  createBillDraft,
+  getApReconciliation,
+  postBill,
+  rejectBill,
+  submitBill,
+} from "@/lib/actions/arap";
 import { getActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -67,8 +75,8 @@ export default async function BillsPage() {
   }
 
   const { data: bills, error: billError } = await supabaseAdmin()
-    .from("ap_bills")
-    .select("id, bill_date, due_date, narration, status, total_gross, suppliers ( name )")
+    .from("bills")
+    .select("id, bill_no, bill_date, due_date, status, total_gross, created_by, suppliers ( name )")
     .eq("company_id", companyId)
     .order("bill_date", { ascending: false })
     .limit(50);
@@ -83,8 +91,9 @@ export default async function BillsPage() {
     "use server";
     const supplierId = String(formData.get("supplier_id") ?? "");
     const periodId = String(formData.get("period_id") ?? "");
+    const billNo = String(formData.get("bill_no") ?? "").trim();
     const billDate = String(formData.get("bill_date") ?? "");
-    const dueDate = String(formData.get("due_date") ?? "");
+    const dueDateRaw = String(formData.get("due_date") ?? "");
     const narration = String(formData.get("narration") ?? "").trim();
     const linesJson = String(formData.get("lines_json") ?? "[]");
     const lines = JSON.parse(linesJson) as Array<{
@@ -94,21 +103,33 @@ export default async function BillsPage() {
       unit_price: string;
     }>;
 
-    await createBillDraft(
-      activeCompanyId,
-      supplierId,
-      periodId,
-      billDate,
-      dueDate,
+    if (!billNo) {
+      throw new Error("Bill number is required.");
+    }
+
+    await createBillDraft({
+      company_id: activeCompanyId,
+      supplier_id: supplierId,
+      period_id: periodId,
+      bill_no: billNo,
+      bill_date: billDate,
+      due_date: dueDateRaw || null,
       narration,
-      lines.map((line) => ({
+      lines: lines.map((line) => ({
         account_id: line.account_id,
         description: line.description,
         quantity: Number(line.quantity) || 0,
         unit_price: Number(line.unit_price) || 0,
-      }))
-    );
+      })),
+    });
 
+    revalidatePath("/staff/bills");
+  }
+
+  async function submitAction(formData: FormData) {
+    "use server";
+    const billId = String(formData.get("bill_id") ?? "");
+    await submitBill(billId);
     revalidatePath("/staff/bills");
   }
 
@@ -116,6 +137,14 @@ export default async function BillsPage() {
     "use server";
     const billId = String(formData.get("bill_id") ?? "");
     await approveBill(billId);
+    revalidatePath("/staff/bills");
+  }
+
+  async function rejectAction(formData: FormData) {
+    "use server";
+    const billId = String(formData.get("bill_id") ?? "");
+    const note = String(formData.get("reject_note") ?? "").trim();
+    await rejectBill(billId, note || "Rejected");
     revalidatePath("/staff/bills");
   }
 
@@ -128,17 +157,14 @@ export default async function BillsPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>AP reconciliation</CardTitle>
-          <CardDescription>Control vs supplier balances.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-600">
-            Bills: {reconciliation.billTotal.toFixed(2)} | Payments: {reconciliation.paymentTotal.toFixed(2)} | Difference: {reconciliation.difference.toFixed(2)}
-          </p>
-        </CardContent>
-      </Card>
+      <ReconciliationBanner
+        title="AP reconciliation"
+        description="Control vs supplier balances."
+        controlBalance={reconciliation.apControlBalance}
+        subledgerBalance={reconciliation.totalSupplierBalance}
+        difference={reconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ap"
+      />
 
       <Card>
         <CardHeader>
@@ -171,12 +197,16 @@ export default async function BillsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>Bill no</Label>
+                <Input name="bill_no" required />
+              </div>
+              <div className="space-y-2">
                 <Label>Bill date</Label>
                 <Input name="bill_date" type="date" required />
               </div>
               <div className="space-y-2">
                 <Label>Due date</Label>
-                <Input name="due_date" type="date" required />
+                <Input name="due_date" type="date" />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Narration</Label>
@@ -200,6 +230,7 @@ export default async function BillsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
+                <TableHead>Bill</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead>Status</TableHead>
@@ -209,62 +240,80 @@ export default async function BillsPage() {
             <TableBody>
               {(bills ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-sm text-zinc-500">
+                  <TableCell colSpan={6} className="text-sm text-zinc-500">
                     No bills yet.
                   </TableCell>
                 </TableRow>
               ) : (
-                bills?.map((bill) => (
-                  <TableRow key={bill.id}>
-                    <TableCell>{bill.bill_date}</TableCell>
-                    <TableCell>
-                      {(() => {
-                        const supplier = Array.isArray(bill.suppliers)
-                          ? bill.suppliers[0]
-                          : bill.suppliers;
-                        return (supplier as { name: string } | null)?.name ?? "-";
-                      })()}
-                    </TableCell>
-                    <TableCell>{Number(bill.total_gross).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          bill.status === "posted"
-                            ? "success"
-                            : bill.status === "approved"
-                            ? "warning"
-                            : "default"
-                        }
-                      >
-                        {bill.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="space-y-2">
-                      <Link
-                        href={`/staff/bills/${bill.id}`}
-                        className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                      >
-                        View
-                      </Link>
-                      {canApprove && bill.status === "draft" && (
-                        <form action={approveAction}>
-                          <input type="hidden" name="bill_id" value={bill.id} />
-                          <Button type="submit" variant="outline">
-                            Approve
-                          </Button>
-                        </form>
-                      )}
-                      {canApprove && bill.status === "approved" && (
-                        <form action={postAction}>
-                          <input type="hidden" name="bill_id" value={bill.id} />
-                          <Button type="submit" variant="outline">
-                            Post
-                          </Button>
-                        </form>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                bills?.map((bill) => {
+                  const supplier = Array.isArray(bill.suppliers)
+                    ? bill.suppliers[0]
+                    : bill.suppliers;
+                  return (
+                    <TableRow key={bill.id}>
+                      <TableCell>{bill.bill_date}</TableCell>
+                      <TableCell>{bill.bill_no}</TableCell>
+                      <TableCell>{(supplier as { name: string } | null)?.name ?? "-"}</TableCell>
+                      <TableCell>{Number(bill.total_gross).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            bill.status === "posted"
+                              ? "success"
+                              : bill.status === "approved"
+                              ? "warning"
+                              : bill.status === "submitted"
+                              ? "default"
+                              : "default"
+                          }
+                        >
+                          {bill.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="space-y-2">
+                        <Link
+                          href={`/staff/bills/${bill.id}`}
+                          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                        >
+                          View
+                        </Link>
+                        {bill.status === "draft" && bill.created_by === user.id && (
+                          <form action={submitAction}>
+                            <input type="hidden" name="bill_id" value={bill.id} />
+                            <Button type="submit" variant="outline">
+                              Submit
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && bill.status === "submitted" && bill.created_by !== user.id && (
+                          <form action={approveAction}>
+                            <input type="hidden" name="bill_id" value={bill.id} />
+                            <Button type="submit" variant="outline">
+                              Approve
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && bill.status === "submitted" && bill.created_by !== user.id && (
+                          <form action={rejectAction} className="flex items-center gap-2">
+                            <input type="hidden" name="bill_id" value={bill.id} />
+                            <Input name="reject_note" placeholder="Reject note" />
+                            <Button type="submit" variant="ghost">
+                              Reject
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && bill.status === "approved" && (
+                          <form action={postAction}>
+                            <input type="hidden" name="bill_id" value={bill.id} />
+                            <Button type="submit" variant="outline">
+                              Post
+                            </Button>
+                          </form>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

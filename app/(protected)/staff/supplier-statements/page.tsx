@@ -1,8 +1,10 @@
+import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getApReconciliation } from "@/lib/actions/arap";
 import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getSupplierStatement } from "@/lib/data/arap";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -42,11 +44,22 @@ export default async function SupplierStatementsPage({
   const selectedId = searchParams.supplier ?? "";
   const mode = searchParams.mode ?? "short";
 
-  const entries = selectedId ? await getSupplierStatement(activeCompanyId, selectedId) : [];
+  const [entries, reconciliation] = await Promise.all([
+    selectedId ? getSupplierStatement(activeCompanyId, selectedId) : Promise.resolve([]),
+    getApReconciliation(activeCompanyId),
+  ]);
   const balance = entries.length ? entries[entries.length - 1].balance : 0;
 
   return (
     <div className="space-y-6">
+      <ReconciliationBanner
+        title="AP reconciliation"
+        description="Control vs supplier balances."
+        controlBalance={reconciliation.apControlBalance}
+        subledgerBalance={reconciliation.totalSupplierBalance}
+        difference={reconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ap"
+      />
       <Card>
         <CardHeader>
           <CardTitle>Supplier statements</CardTitle>

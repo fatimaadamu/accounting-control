@@ -72,6 +72,22 @@ const ensureAccountsInCompany = async (
   }
 };
 
+const ensurePeriodOpen = async (periodId: string) => {
+  const { data, error } = await supabaseAdmin()
+    .from("periods")
+    .select("status")
+    .eq("id", periodId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("Period not found.");
+  }
+
+  if (data.status !== "open") {
+    throw new Error("Journal period is closed.");
+  }
+};
+
 export const createJournalDraft = async (
   company_id: string,
   period_id: string,
@@ -271,6 +287,79 @@ export const postJournal = async (journal_id: string) => {
     after: { status: "posted", totals },
     created_by: user.id,
   });
+};
+
+export const createPostedJournalFromLines = async (payload: {
+  company_id: string;
+  period_id: string;
+  entry_date: string;
+  narration: string;
+  lines: JournalLineInput[];
+  user_id: string;
+}) => {
+  const normalizedLines = normalizeLines(payload.lines);
+  await ensureAccountsInCompany(payload.company_id, normalizedLines);
+  await ensurePeriodOpen(payload.period_id);
+
+  const totals = normalizedLines.reduce(
+    (acc, line) => {
+      acc.debit += line.debit;
+      acc.credit += line.credit;
+      return acc;
+    },
+    { debit: 0, credit: 0 }
+  );
+
+  if (Math.abs(totals.debit - totals.credit) > 0.005) {
+    throw new Error("Journal is not balanced.");
+  }
+
+  const { data: journal, error } = await supabaseAdmin()
+    .from("journal_entries")
+    .insert({
+      company_id: payload.company_id,
+      period_id: payload.period_id,
+      entry_date: payload.entry_date,
+      narration: payload.narration,
+      status: "posted",
+      created_by: payload.user_id,
+      approved_by: payload.user_id,
+      approved_at: new Date().toISOString(),
+      posted_by: payload.user_id,
+      posted_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (error || !journal) {
+    throw new Error(error?.message ?? "Failed to create journal.");
+  }
+
+  const { error: lineError } = await supabaseAdmin()
+    .from("journal_lines")
+    .insert(
+      normalizedLines.map((line) => ({
+        journal_id: journal.id,
+        account_id: line.account_id,
+        debit: line.debit,
+        credit: line.credit,
+      }))
+    );
+
+  if (lineError) {
+    throw new Error(lineError.message);
+  }
+
+  await insertAuditLog({
+    company_id: payload.company_id,
+    entity: "journal_entries",
+    entity_id: journal.id,
+    action: "created_posted",
+    after: { totals },
+    created_by: payload.user_id,
+  });
+
+  return journal.id as string;
 };
 
 export const reverseJournal = async (journal_id: string, reason: string) => {

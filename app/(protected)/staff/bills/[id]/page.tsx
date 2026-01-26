@@ -27,9 +27,9 @@ export default async function BillDetailPage({
   await requireCompanyAccess(user.id, companyId);
 
   const { data: bill, error } = await supabaseAdmin()
-    .from("ap_bills")
+    .from("bills")
     .select(
-      "id, bill_date, due_date, narration, status, total_net, total_gross, suppliers ( name )"
+      "id, bill_no, bill_date, due_date, narration, status, total_net, total_tax, total_gross, suppliers ( name )"
     )
     .eq("id", params.id)
     .eq("company_id", companyId)
@@ -40,13 +40,15 @@ export default async function BillDetailPage({
   }
 
   const { data: lines, error: lineError } = await supabaseAdmin()
-    .from("ap_bill_lines")
-    .select("id, description, quantity, unit_price, line_total, accounts ( code, name )")
+    .from("bill_lines")
+    .select("id, description, net_amount, accounts ( code, name )")
     .eq("bill_id", bill.id);
 
   if (lineError) {
     throw new Error(lineError.message);
   }
+
+  const supplier = Array.isArray(bill.suppliers) ? bill.suppliers[0] : bill.suppliers;
 
   return (
     <div className="space-y-6">
@@ -59,20 +61,15 @@ export default async function BillDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Bill details</CardTitle>
-          <CardDescription>
-            {(() => {
-              const supplier = Array.isArray(bill.suppliers)
-                ? bill.suppliers[0]
-                : bill.suppliers;
-              return (supplier as { name: string } | null)?.name ?? "";
-            })()}
-          </CardDescription>
+          <CardTitle>Bill {bill.bill_no}</CardTitle>
+          <CardDescription>{(supplier as { name: string } | null)?.name ?? ""}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-zinc-600">
           <p>Date: {bill.bill_date}</p>
-          <p>Due: {bill.due_date}</p>
+          <p>Due: {bill.due_date ?? "-"}</p>
           <p>Status: {bill.status}</p>
+          <p>Net: {Number(bill.total_net).toFixed(2)}</p>
+          <p>Tax: {Number(bill.total_tax).toFixed(2)}</p>
           <p>Total: {Number(bill.total_gross).toFixed(2)}</p>
         </CardContent>
       </Card>
@@ -87,40 +84,37 @@ export default async function BillDetailPage({
               <TableRow>
                 <TableHead>Account</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Unit price</TableHead>
-                <TableHead>Total</TableHead>
+                <TableHead>Net</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(lines ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-sm text-zinc-500">
+                  <TableCell colSpan={3} className="text-sm text-zinc-500">
                     No lines.
                   </TableCell>
                 </TableRow>
               ) : (
-                lines?.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell>
-                      {(() => {
-                        const account = Array.isArray(line.accounts)
-                          ? line.accounts[0]
-                          : line.accounts;
-                        return account
-                          ? `${(account as { code: string; name: string }).code} - ${(account as { code: string; name: string }).name}`
-                          : "-";
-                      })()}
-                    </TableCell>
-                    <TableCell>{line.description ?? "-"}</TableCell>
-                    <TableCell>{Number(line.quantity).toFixed(2)}</TableCell>
-                    <TableCell>{Number(line.unit_price).toFixed(2)}</TableCell>
-                    <TableCell>{Number(line.line_total).toFixed(2)}</TableCell>
-                  </TableRow>
-                ))
+                lines?.map((line) => {
+                  const account = Array.isArray(line.accounts) ? line.accounts[0] : line.accounts;
+                  return (
+                    <TableRow key={line.id}>
+                      <TableCell>
+                        {account
+                          ? `${(account as { code: string; name: string }).code} - ${(account as {
+                              code: string;
+                              name: string;
+                            }).name}`
+                          : "-"}
+                      </TableCell>
+                      <TableCell>{line.description ?? "-"}</TableCell>
+                      <TableCell>{Number(line.net_amount).toFixed(2)}</TableCell>
+                    </TableRow>
+                  );
+                })
               )}
               <TableRow>
-                <TableCell colSpan={4} className="font-semibold">
+                <TableCell colSpan={2} className="font-semibold">
                   Total
                 </TableCell>
                 <TableCell className="font-semibold">

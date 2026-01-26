@@ -189,59 +189,56 @@ begin
     insert into public.supplier_groups (company_id, name)
     values (company_id, 'General Suppliers');
 
-    insert into public.customers (company_id, group_id, name, email, phone)
+    insert into public.customers (company_id, customer_group_id, name, tax_exempt, wht_applicable)
     values (
       company_id,
       (select id from public.customer_groups cg where cg.company_id = company_id limit 1),
       'Default Customer',
-      'customer@example.com',
-      '+233000000000'
+      false,
+      true
     );
 
-    insert into public.suppliers (company_id, group_id, name, email, phone)
+    insert into public.suppliers (company_id, supplier_group_id, name, wht_applicable)
     values (
       company_id,
       (select id from public.supplier_groups sg where sg.company_id = company_id limit 1),
       'Default Supplier',
-      'supplier@example.com',
-      '+233000000001'
+      true
     );
 
-    insert into public.tax_rates (company_id, name, tax_type, applies_to, rate, is_withholding)
+    insert into public.tax_rates (company_id, tax, rate, effective_from)
     values
-      (company_id, 'VAT', 'VAT', 'sales', 15.00, false),
-      (company_id, 'NHIL', 'NHIL', 'sales', 2.50, false),
-      (company_id, 'GETFund', 'GETFund', 'sales', 2.50, false),
-      (company_id, 'WHT', 'WHT', 'withholding', 5.00, true);
+      (company_id, 'VAT', 15.00, '2025-10-01'),
+      (company_id, 'NHIL', 2.50, '2025-10-01'),
+      (company_id, 'GETFund', 2.50, '2025-10-01'),
+      (company_id, 'WHT', 5.00, '2025-10-01');
 
-    insert into public.tax_accounts (company_id, tax_rate_id, account_id)
-    select
+    insert into public.tax_accounts (
       company_id,
-      tax.id,
-      acc.id
-    from public.tax_rates tax
-    join public.accounts acc on acc.company_id = company_id
-    where tax.company_id = company_id
-      and (
-        (tax.name = 'VAT' and acc.code = '2200') or
-        (tax.name = 'NHIL' and acc.code = '2210') or
-        (tax.name = 'GETFund' and acc.code = '2220') or
-        (tax.name = 'WHT' and acc.code = '2300')
-      );
-
-    insert into public.company_accounts (
-      company_id,
-      ar_control_account_id,
-      ap_control_account_id,
+      vat_output_account_id,
+      nhil_output_account_id,
+      getfund_output_account_id,
       wht_receivable_account_id,
       wht_payable_account_id
     )
     values (
       company_id,
-      (select id from public.accounts a where a.company_id = company_id and a.code = '1110'),
-      (select id from public.accounts a where a.company_id = company_id and a.code = '2100'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '2200'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '2210'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '2220'),
       (select id from public.accounts a where a.company_id = company_id and a.code = '1120'),
       (select id from public.accounts a where a.company_id = company_id and a.code = '2300')
+    );
+
+    insert into public.company_accounts (
+      company_id,
+      ar_control_account_id,
+      ap_control_account_id
+    )
+    values (
+      company_id,
+      (select id from public.accounts a where a.company_id = company_id and a.code = '1110'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '2100')
     );
   end loop;
 end $$;

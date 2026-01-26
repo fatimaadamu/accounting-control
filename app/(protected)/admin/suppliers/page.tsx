@@ -30,7 +30,7 @@ export default async function SuppliersPage() {
 
   const { data: suppliers, error } = await supabaseAdmin()
     .from("suppliers")
-    .select("id, name, email, phone, group_id")
+    .select("id, name, wht_applicable, supplier_group_id")
     .eq("company_id", companyId)
     .order("name");
 
@@ -51,10 +51,8 @@ export default async function SuppliersPage() {
   async function createAction(formData: FormData) {
     "use server";
     const name = String(formData.get("name") ?? "").trim();
-    const email = String(formData.get("email") ?? "").trim();
-    const phone = String(formData.get("phone") ?? "").trim();
-    const address = String(formData.get("address") ?? "").trim();
     const groupId = String(formData.get("group_id") ?? "");
+    const whtApplicable = Boolean(formData.get("wht_applicable"));
 
     if (!name) {
       throw new Error("Supplier name is required.");
@@ -63,10 +61,8 @@ export default async function SuppliersPage() {
     await createSupplier({
       company_id: activeCompanyId,
       name,
-      email: email || undefined,
-      phone: phone || undefined,
-      address: address || undefined,
-      group_id: groupId || null,
+      supplier_group_id: groupId || null,
+      wht_applicable: whtApplicable,
     });
 
     revalidatePath("/admin/suppliers");
@@ -76,10 +72,8 @@ export default async function SuppliersPage() {
     "use server";
     const id = String(formData.get("supplier_id") ?? "");
     const name = String(formData.get("edit_name") ?? "").trim();
-    const email = String(formData.get("edit_email") ?? "").trim();
-    const phone = String(formData.get("edit_phone") ?? "").trim();
-    const address = String(formData.get("edit_address") ?? "").trim();
     const groupId = String(formData.get("edit_group_id") ?? "");
+    const whtApplicable = Boolean(formData.get("edit_wht_applicable"));
 
     if (!id || !name) {
       throw new Error("Supplier and name are required.");
@@ -89,10 +83,8 @@ export default async function SuppliersPage() {
       id,
       company_id: activeCompanyId,
       name,
-      email: email || undefined,
-      phone: phone || undefined,
-      address: address || undefined,
-      group_id: groupId || null,
+      supplier_group_id: groupId || null,
+      wht_applicable: whtApplicable,
     });
 
     revalidatePath("/admin/suppliers");
@@ -110,14 +102,13 @@ export default async function SuppliersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
+                <TableHead>WHT</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(suppliers ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-sm text-zinc-500">
+                  <TableCell colSpan={2} className="text-sm text-zinc-500">
                     No suppliers yet.
                   </TableCell>
                 </TableRow>
@@ -125,8 +116,7 @@ export default async function SuppliersPage() {
                 suppliers?.map((supplier) => (
                   <TableRow key={supplier.id}>
                     <TableCell>{supplier.name}</TableCell>
-                    <TableCell>{supplier.email ?? "-"}</TableCell>
-                    <TableCell>{supplier.phone ?? "-"}</TableCell>
+                    <TableCell>{supplier.wht_applicable ? "Yes" : "No"}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -157,18 +147,9 @@ export default async function SuppliersPage() {
                 ))}
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input id="phone" name="phone" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="address">Address</Label>
-              <Input id="address" name="address" />
-            </div>
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" name="wht_applicable" defaultChecked /> WHT applicable
+            </label>
             <div className="md:col-span-2">
               <Button type="submit">Create supplier</Button>
             </div>
@@ -209,18 +190,9 @@ export default async function SuppliersPage() {
               <Label htmlFor="edit_name">Name</Label>
               <Input id="edit_name" name="edit_name" required />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit_email">Email</Label>
-              <Input id="edit_email" name="edit_email" type="email" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit_phone">Phone</Label>
-              <Input id="edit_phone" name="edit_phone" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit_address">Address</Label>
-              <Input id="edit_address" name="edit_address" />
-            </div>
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" name="edit_wht_applicable" defaultChecked /> WHT applicable
+            </label>
             <div className="md:col-span-2">
               <Button type="submit" variant="outline">
                 Update supplier

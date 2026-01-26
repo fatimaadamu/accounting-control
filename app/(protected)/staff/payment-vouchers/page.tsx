@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 
 import AllocationsForm from "@/components/allocations-form";
+import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { approvePaymentVoucher, createPaymentVoucherDraft, getApReconciliation, postPaymentVoucher } from "@/lib/actions/arap";
+import {
+  approveVoucher,
+  createVoucherDraft,
+  getApReconciliation,
+  postVoucher,
+  rejectVoucher,
+  submitVoucher,
+} from "@/lib/actions/arap";
 import { getActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -37,7 +45,7 @@ export default async function PaymentVouchersPage() {
 
   const { data: suppliers, error: supplierError } = await supabaseAdmin()
     .from("suppliers")
-    .select("id, name")
+    .select("id, name, wht_applicable")
     .eq("company_id", companyId)
     .order("name");
 
@@ -66,8 +74,8 @@ export default async function PaymentVouchersPage() {
   }
 
   const { data: bills, error: billError } = await supabaseAdmin()
-    .from("ap_bills")
-    .select("id, total_gross, suppliers ( name )")
+    .from("bills")
+    .select("id, bill_no, total_gross, suppliers ( name )")
     .eq("company_id", companyId)
     .eq("status", "posted");
 
@@ -76,9 +84,9 @@ export default async function PaymentVouchersPage() {
   }
 
   const { data: allocations, error: allocError } = await supabaseAdmin()
-    .from("ap_payment_allocations")
-    .select("bill_id, amount, ap_payment_vouchers!inner(status)")
-    .eq("ap_payment_vouchers.status", "posted");
+    .from("payment_allocations")
+    .select("bill_id, amount_allocated, payment_vouchers!inner(status)")
+    .eq("payment_vouchers.status", "posted");
 
   if (allocError) {
     throw new Error(allocError.message);
@@ -88,7 +96,7 @@ export default async function PaymentVouchersPage() {
   for (const alloc of allocations ?? []) {
     allocationTotals.set(
       alloc.bill_id,
-      (allocationTotals.get(alloc.bill_id) ?? 0) + Number(alloc.amount || 0)
+      (allocationTotals.get(alloc.bill_id) ?? 0) + Number(alloc.amount_allocated || 0)
     );
   }
 
@@ -96,26 +104,24 @@ export default async function PaymentVouchersPage() {
     .map((bill) => {
       const allocated = allocationTotals.get(bill.id) ?? 0;
       const outstanding = Number(bill.total_gross) - allocated;
-      const supplier = Array.isArray(bill.suppliers)
-        ? bill.suppliers[0]
-        : bill.suppliers;
+      const supplier = Array.isArray(bill.suppliers) ? bill.suppliers[0] : bill.suppliers;
       return {
         id: bill.id,
-        label: `${(supplier as { name: string } | null)?.name ?? "Supplier"}`,
+        label: `${bill.bill_no} - ${(supplier as { name: string } | null)?.name ?? "Supplier"}`,
         amount_due: outstanding,
       };
     })
     .filter((option) => option.amount_due > 0);
 
-  const { data: payments, error: paymentError } = await supabaseAdmin()
-    .from("ap_payment_vouchers")
-    .select("id, payment_date, status, total_paid, suppliers ( name )")
+  const { data: vouchers, error: voucherError } = await supabaseAdmin()
+    .from("payment_vouchers")
+    .select("id, voucher_no, payment_date, status, amount_paid, wht_deducted, created_by, suppliers ( name )")
     .eq("company_id", companyId)
     .order("payment_date", { ascending: false })
     .limit(50);
 
-  if (paymentError) {
-    throw new Error(paymentError.message);
+  if (voucherError) {
+    throw new Error(voucherError.message);
   }
 
   const reconciliation = await getApReconciliation(activeCompanyId);
@@ -124,64 +130,86 @@ export default async function PaymentVouchersPage() {
     "use server";
     const supplierId = String(formData.get("supplier_id") ?? "");
     const periodId = String(formData.get("period_id") ?? "");
+    const voucherNo = String(formData.get("voucher_no") ?? "").trim();
     const paymentDate = String(formData.get("payment_date") ?? "");
+    const method = String(formData.get("method") ?? "cash") as
+      | "bank"
+      | "momo"
+      | "cash"
+      | "cheque";
     const cashAccountId = String(formData.get("cash_account_id") ?? "");
-    const narration = String(formData.get("narration") ?? "").trim();
-    const totalPaid = Number(formData.get("total_paid") ?? 0);
+    const amountPaid = Number(formData.get("amount_paid") ?? 0);
     const whtDeducted = Number(formData.get("wht_deducted") ?? 0);
     const allocationsJson = String(formData.get("allocations_json") ?? "[]");
     const allocations = JSON.parse(allocationsJson) as Array<{ doc_id: string; amount: string }>;
 
-    await createPaymentVoucherDraft(
-      activeCompanyId,
-      supplierId,
-      periodId,
-      paymentDate,
-      cashAccountId,
-      narration,
-      totalPaid,
-      whtDeducted,
-      allocations.map((alloc) => ({
+    if (!voucherNo) {
+      throw new Error("Voucher number is required.");
+    }
+
+    await createVoucherDraft({
+      company_id: activeCompanyId,
+      supplier_id: supplierId,
+      period_id: periodId,
+      voucher_no: voucherNo,
+      payment_date: paymentDate,
+      method,
+      cash_account_id: cashAccountId,
+      amount_paid: amountPaid,
+      wht_deducted: whtDeducted,
+      allocations: allocations.map((alloc) => ({
         doc_id: alloc.doc_id,
         amount: Number(alloc.amount) || 0,
-      }))
-    );
+      })),
+    });
 
+    revalidatePath("/staff/payment-vouchers");
+  }
+
+  async function submitAction(formData: FormData) {
+    "use server";
+    const voucherId = String(formData.get("voucher_id") ?? "");
+    await submitVoucher(voucherId);
     revalidatePath("/staff/payment-vouchers");
   }
 
   async function approveAction(formData: FormData) {
     "use server";
-    const paymentId = String(formData.get("payment_id") ?? "");
-    await approvePaymentVoucher(paymentId);
+    const voucherId = String(formData.get("voucher_id") ?? "");
+    await approveVoucher(voucherId);
+    revalidatePath("/staff/payment-vouchers");
+  }
+
+  async function rejectAction(formData: FormData) {
+    "use server";
+    const voucherId = String(formData.get("voucher_id") ?? "");
+    const note = String(formData.get("reject_note") ?? "").trim();
+    await rejectVoucher(voucherId, note || "Rejected");
     revalidatePath("/staff/payment-vouchers");
   }
 
   async function postAction(formData: FormData) {
     "use server";
-    const paymentId = String(formData.get("payment_id") ?? "");
-    await postPaymentVoucher(paymentId);
+    const voucherId = String(formData.get("voucher_id") ?? "");
+    await postVoucher(voucherId);
     revalidatePath("/staff/payment-vouchers");
   }
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>AP reconciliation</CardTitle>
-          <CardDescription>Control vs supplier balances.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-600">
-            Bills: {reconciliation.billTotal.toFixed(2)} | Payments: {reconciliation.paymentTotal.toFixed(2)} | Difference: {reconciliation.difference.toFixed(2)}
-          </p>
-        </CardContent>
-      </Card>
+      <ReconciliationBanner
+        title="AP reconciliation"
+        description="Control vs supplier balances."
+        controlBalance={reconciliation.apControlBalance}
+        subledgerBalance={reconciliation.totalSupplierBalance}
+        difference={reconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ap"
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>New payment voucher</CardTitle>
-          <CardDescription>Allocate payments to supplier bills.</CardDescription>
+          <CardDescription>Record payments and allocate to bills.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={createAction} className="space-y-4">
@@ -192,7 +220,7 @@ export default async function PaymentVouchersPage() {
                   <option value="">Select supplier</option>
                   {(suppliers ?? []).map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
+                      {supplier.name} {supplier.wht_applicable ? "" : "(No WHT)"}
                     </option>
                   ))}
                 </Select>
@@ -209,8 +237,21 @@ export default async function PaymentVouchersPage() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>Voucher no</Label>
+                <Input name="voucher_no" required />
+              </div>
+              <div className="space-y-2">
                 <Label>Payment date</Label>
                 <Input name="payment_date" type="date" required />
+              </div>
+              <div className="space-y-2">
+                <Label>Method</Label>
+                <Select name="method" required>
+                  <option value="cash">Cash</option>
+                  <option value="bank">Bank</option>
+                  <option value="momo">Mobile money</option>
+                  <option value="cheque">Cheque</option>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Cash/Bank account</Label>
@@ -224,16 +265,12 @@ export default async function PaymentVouchersPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Total paid</Label>
-                <Input name="total_paid" type="number" step="0.01" />
+                <Label>Amount paid</Label>
+                <Input name="amount_paid" type="number" step="0.01" />
               </div>
               <div className="space-y-2">
                 <Label>WHT deducted</Label>
                 <Input name="wht_deducted" type="number" step="0.01" />
-              </div>
-              <div className="space-y-2 md:col-span-3">
-                <Label>Narration</Label>
-                <Input name="narration" />
               </div>
             </div>
 
@@ -245,7 +282,7 @@ export default async function PaymentVouchersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent payment vouchers</CardTitle>
+          <CardTitle>Recent vouchers</CardTitle>
           <CardDescription>Latest 50 payment vouchers for the active company.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -253,6 +290,7 @@ export default async function PaymentVouchersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
+                <TableHead>Voucher</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead>Status</TableHead>
@@ -260,58 +298,78 @@ export default async function PaymentVouchersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(payments ?? []).length === 0 ? (
+              {(vouchers ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-sm text-zinc-500">
-                    No payment vouchers yet.
+                  <TableCell colSpan={6} className="text-sm text-zinc-500">
+                    No vouchers yet.
                   </TableCell>
                 </TableRow>
               ) : (
-                payments?.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{payment.payment_date}</TableCell>
-                    <TableCell>
-                      {(() => {
-                        const supplier = Array.isArray(payment.suppliers)
-                          ? payment.suppliers[0]
-                          : payment.suppliers;
-                        return (supplier as { name: string } | null)?.name ?? "-";
-                      })()}
-                    </TableCell>
-                    <TableCell>{Number(payment.total_paid).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          payment.status === "posted"
-                            ? "success"
-                            : payment.status === "approved"
-                            ? "warning"
-                            : "default"
-                        }
-                      >
-                        {payment.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="space-y-2">
-                      {canApprove && payment.status === "draft" && (
-                        <form action={approveAction}>
-                          <input type="hidden" name="payment_id" value={payment.id} />
-                          <Button type="submit" variant="outline">
-                            Approve
-                          </Button>
-                        </form>
-                      )}
-                      {canApprove && payment.status === "approved" && (
-                        <form action={postAction}>
-                          <input type="hidden" name="payment_id" value={payment.id} />
-                          <Button type="submit" variant="outline">
-                            Post
-                          </Button>
-                        </form>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                vouchers?.map((voucher) => {
+                  const supplier = Array.isArray(voucher.suppliers)
+                    ? voucher.suppliers[0]
+                    : voucher.suppliers;
+                  return (
+                    <TableRow key={voucher.id}>
+                      <TableCell>{voucher.payment_date}</TableCell>
+                      <TableCell>{voucher.voucher_no}</TableCell>
+                      <TableCell>{(supplier as { name: string } | null)?.name ?? "-"}</TableCell>
+                      <TableCell>
+                        {Number(voucher.amount_paid).toFixed(2)} (WHT {Number(voucher.wht_deducted).toFixed(2)})
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            voucher.status === "posted"
+                              ? "success"
+                              : voucher.status === "approved"
+                              ? "warning"
+                              : voucher.status === "submitted"
+                              ? "default"
+                              : "default"
+                          }
+                        >
+                          {voucher.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="space-y-2">
+                        {voucher.status === "draft" && voucher.created_by === user.id && (
+                          <form action={submitAction}>
+                            <input type="hidden" name="voucher_id" value={voucher.id} />
+                            <Button type="submit" variant="outline">
+                              Submit
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && voucher.status === "submitted" && voucher.created_by !== user.id && (
+                          <form action={approveAction}>
+                            <input type="hidden" name="voucher_id" value={voucher.id} />
+                            <Button type="submit" variant="outline">
+                              Approve
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && voucher.status === "submitted" && voucher.created_by !== user.id && (
+                          <form action={rejectAction} className="flex items-center gap-2">
+                            <input type="hidden" name="voucher_id" value={voucher.id} />
+                            <Input name="reject_note" placeholder="Reject note" />
+                            <Button type="submit" variant="ghost">
+                              Reject
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && voucher.status === "approved" && (
+                          <form action={postAction}>
+                            <input type="hidden" name="voucher_id" value={voucher.id} />
+                            <Button type="submit" variant="outline">
+                              Post
+                            </Button>
+                          </form>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

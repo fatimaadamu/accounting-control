@@ -32,11 +32,9 @@ export const createSupplierGroup = async (companyId: string, name: string) => {
 export const createCustomer = async (payload: {
   company_id: string;
   name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  group_id?: string | null;
+  customer_group_id?: string | null;
   tax_exempt?: boolean;
+  wht_applicable?: boolean;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
@@ -44,11 +42,9 @@ export const createCustomer = async (payload: {
   const { error } = await supabaseAdmin().from("customers").insert({
     company_id: payload.company_id,
     name: payload.name,
-    email: payload.email,
-    phone: payload.phone,
-    address: payload.address,
-    group_id: payload.group_id ?? null,
+    customer_group_id: payload.customer_group_id ?? null,
     tax_exempt: payload.tax_exempt ?? false,
+    wht_applicable: payload.wht_applicable ?? true,
   });
 
   if (error) {
@@ -60,11 +56,9 @@ export const updateCustomer = async (payload: {
   id: string;
   company_id: string;
   name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  group_id?: string | null;
+  customer_group_id?: string | null;
   tax_exempt?: boolean;
+  wht_applicable?: boolean;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
@@ -73,11 +67,9 @@ export const updateCustomer = async (payload: {
     .from("customers")
     .update({
       name: payload.name,
-      email: payload.email,
-      phone: payload.phone,
-      address: payload.address,
-      group_id: payload.group_id ?? null,
+      customer_group_id: payload.customer_group_id ?? null,
       tax_exempt: payload.tax_exempt ?? false,
+      wht_applicable: payload.wht_applicable ?? true,
     })
     .eq("id", payload.id);
 
@@ -89,22 +81,19 @@ export const updateCustomer = async (payload: {
 export const createSupplier = async (payload: {
   company_id: string;
   name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  group_id?: string | null;
+  supplier_group_id?: string | null;
+  wht_applicable?: boolean;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
 
-  const { error } = await supabaseAdmin().from("suppliers").insert({
-    company_id: payload.company_id,
-    name: payload.name,
-    email: payload.email,
-    phone: payload.phone,
-    address: payload.address,
-    group_id: payload.group_id ?? null,
-  });
+  const { error } = await supabaseAdmin().from("suppliers")
+    .insert({
+      company_id: payload.company_id,
+      name: payload.name,
+      supplier_group_id: payload.supplier_group_id ?? null,
+      wht_applicable: payload.wht_applicable ?? true,
+    });
 
   if (error) {
     throw new Error(error.message);
@@ -115,10 +104,8 @@ export const updateSupplier = async (payload: {
   id: string;
   company_id: string;
   name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  group_id?: string | null;
+  supplier_group_id?: string | null;
+  wht_applicable?: boolean;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
@@ -127,10 +114,8 @@ export const updateSupplier = async (payload: {
     .from("suppliers")
     .update({
       name: payload.name,
-      email: payload.email,
-      phone: payload.phone,
-      address: payload.address,
-      group_id: payload.group_id ?? null,
+      supplier_group_id: payload.supplier_group_id ?? null,
+      wht_applicable: payload.wht_applicable ?? true,
     })
     .eq("id", payload.id);
 
@@ -141,22 +126,18 @@ export const updateSupplier = async (payload: {
 
 export const createTaxRate = async (payload: {
   company_id: string;
-  name: string;
-  tax_type: string;
-  applies_to: string;
+  tax: "VAT" | "NHIL" | "GETFund" | "WHT";
   rate: number;
-  is_withholding: boolean;
+  effective_from: string;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
 
   const { error } = await supabaseAdmin().from("tax_rates").insert({
     company_id: payload.company_id,
-    name: payload.name,
-    tax_type: payload.tax_type,
-    applies_to: payload.applies_to,
+    tax: payload.tax,
     rate: payload.rate,
-    is_withholding: payload.is_withholding,
+    effective_from: payload.effective_from,
   });
 
   if (error) {
@@ -164,21 +145,25 @@ export const createTaxRate = async (payload: {
   }
 };
 
-export const mapTaxAccount = async (payload: {
+export const upsertTaxAccounts = async (payload: {
   company_id: string;
-  tax_rate_id: string;
-  account_id: string;
+  vat_output_account_id?: string | null;
+  nhil_output_account_id?: string | null;
+  getfund_output_account_id?: string | null;
+  wht_receivable_account_id?: string | null;
+  wht_payable_account_id?: string | null;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
 
-  const { error } = await supabaseAdmin()
-    .from("tax_accounts")
-    .upsert({
-      company_id: payload.company_id,
-      tax_rate_id: payload.tax_rate_id,
-      account_id: payload.account_id,
-    });
+  const { error } = await supabaseAdmin().from("tax_accounts").upsert({
+    company_id: payload.company_id,
+    vat_output_account_id: payload.vat_output_account_id ?? null,
+    nhil_output_account_id: payload.nhil_output_account_id ?? null,
+    getfund_output_account_id: payload.getfund_output_account_id ?? null,
+    wht_receivable_account_id: payload.wht_receivable_account_id ?? null,
+    wht_payable_account_id: payload.wht_payable_account_id ?? null,
+  });
 
   if (error) {
     throw new Error(error.message);
@@ -189,21 +174,15 @@ export const upsertCompanyAccounts = async (payload: {
   company_id: string;
   ar_control_account_id?: string | null;
   ap_control_account_id?: string | null;
-  wht_receivable_account_id?: string | null;
-  wht_payable_account_id?: string | null;
 }) => {
   const user = await requireUser();
   await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
 
-  const { error } = await supabaseAdmin()
-    .from("company_accounts")
-    .upsert({
-      company_id: payload.company_id,
-      ar_control_account_id: payload.ar_control_account_id ?? null,
-      ap_control_account_id: payload.ap_control_account_id ?? null,
-      wht_receivable_account_id: payload.wht_receivable_account_id ?? null,
-      wht_payable_account_id: payload.wht_payable_account_id ?? null,
-    });
+  const { error } = await supabaseAdmin().from("company_accounts").upsert({
+    company_id: payload.company_id,
+    ar_control_account_id: payload.ar_control_account_id ?? null,
+    ap_control_account_id: payload.ap_control_account_id ?? null,
+  });
 
   if (error) {
     throw new Error(error.message);

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 
 import DocumentLinesForm from "@/components/document-lines-form";
+import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { approveInvoice, createInvoiceDraft, getArReconciliation, postInvoice } from "@/lib/actions/arap";
+import {
+  approveInvoice,
+  createInvoiceDraft,
+  getArReconciliation,
+  postInvoice,
+  rejectInvoice,
+  submitInvoice,
+} from "@/lib/actions/arap";
 import { getActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -66,20 +74,9 @@ export default async function InvoicesPage() {
     throw new Error(accountError.message);
   }
 
-  const { data: taxRates, error: taxError } = await supabaseAdmin()
-    .from("tax_rates")
-    .select("id, name, rate, applies_to")
-    .eq("company_id", companyId)
-    .eq("applies_to", "sales")
-    .order("name");
-
-  if (taxError) {
-    throw new Error(taxError.message);
-  }
-
   const { data: invoices, error: invoiceError } = await supabaseAdmin()
-    .from("ar_invoices")
-    .select("id, invoice_date, due_date, narration, status, total_gross, customers ( name )")
+    .from("invoices")
+    .select("id, invoice_no, invoice_date, due_date, status, total_gross, created_by, customers ( name )")
     .eq("company_id", companyId)
     .order("invoice_date", { ascending: false })
     .limit(50);
@@ -94,13 +91,10 @@ export default async function InvoicesPage() {
     "use server";
     const customerId = String(formData.get("customer_id") ?? "");
     const periodId = String(formData.get("period_id") ?? "");
+    const invoiceNo = String(formData.get("invoice_no") ?? "").trim();
     const invoiceDate = String(formData.get("invoice_date") ?? "");
-    const dueDate = String(formData.get("due_date") ?? "");
+    const dueDateRaw = String(formData.get("due_date") ?? "");
     const narration = String(formData.get("narration") ?? "").trim();
-    const taxExempt = Boolean(formData.get("tax_exempt"));
-    const vatRateId = String(formData.get("vat_rate_id") ?? "") || null;
-    const nhilRateId = String(formData.get("nhil_rate_id") ?? "") || null;
-    const getfundRateId = String(formData.get("getfund_rate_id") ?? "") || null;
     const linesJson = String(formData.get("lines_json") ?? "[]");
     const lines = JSON.parse(linesJson) as Array<{
       account_id: string;
@@ -109,25 +103,33 @@ export default async function InvoicesPage() {
       unit_price: string;
     }>;
 
-    await createInvoiceDraft(
-      activeCompanyId,
-      customerId,
-      periodId,
-      invoiceDate,
-      dueDate,
+    if (!invoiceNo) {
+      throw new Error("Invoice number is required.");
+    }
+
+    await createInvoiceDraft({
+      company_id: activeCompanyId,
+      customer_id: customerId,
+      period_id: periodId,
+      invoice_no: invoiceNo,
+      invoice_date: invoiceDate,
+      due_date: dueDateRaw || null,
       narration,
-      taxExempt,
-      vatRateId,
-      nhilRateId,
-      getfundRateId,
-      lines.map((line) => ({
+      lines: lines.map((line) => ({
         account_id: line.account_id,
         description: line.description,
         quantity: Number(line.quantity) || 0,
         unit_price: Number(line.unit_price) || 0,
-      }))
-    );
+      })),
+    });
 
+    revalidatePath("/staff/invoices");
+  }
+
+  async function submitAction(formData: FormData) {
+    "use server";
+    const invoiceId = String(formData.get("invoice_id") ?? "");
+    await submitInvoice(invoiceId);
     revalidatePath("/staff/invoices");
   }
 
@@ -135,6 +137,14 @@ export default async function InvoicesPage() {
     "use server";
     const invoiceId = String(formData.get("invoice_id") ?? "");
     await approveInvoice(invoiceId);
+    revalidatePath("/staff/invoices");
+  }
+
+  async function rejectAction(formData: FormData) {
+    "use server";
+    const invoiceId = String(formData.get("invoice_id") ?? "");
+    const note = String(formData.get("reject_note") ?? "").trim();
+    await rejectInvoice(invoiceId, note || "Rejected");
     revalidatePath("/staff/invoices");
   }
 
@@ -147,17 +157,14 @@ export default async function InvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>AR reconciliation</CardTitle>
-          <CardDescription>Control vs customer balances.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-600">
-            Invoices: {reconciliation.invoiceTotal.toFixed(2)} | Receipts: {reconciliation.receiptTotal.toFixed(2)} | Difference: {reconciliation.difference.toFixed(2)}
-          </p>
-        </CardContent>
-      </Card>
+      <ReconciliationBanner
+        title="AR reconciliation"
+        description="Control vs customer balances."
+        controlBalance={reconciliation.arControlBalance}
+        subledgerBalance={reconciliation.totalCustomerBalance}
+        difference={reconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ar"
+      />
 
       <Card>
         <CardHeader>
@@ -173,7 +180,7 @@ export default async function InvoicesPage() {
                   <option value="">Select customer</option>
                   {(customers ?? []).map((customer) => (
                     <option key={customer.id} value={customer.id}>
-                      {customer.name}
+                      {customer.name} {customer.tax_exempt ? "(Tax exempt)" : ""}
                     </option>
                   ))}
                 </Select>
@@ -190,56 +197,21 @@ export default async function InvoicesPage() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>Invoice no</Label>
+                <Input name="invoice_no" required />
+              </div>
+              <div className="space-y-2">
                 <Label>Invoice date</Label>
                 <Input name="invoice_date" type="date" required />
               </div>
               <div className="space-y-2">
                 <Label>Due date</Label>
-                <Input name="due_date" type="date" required />
+                <Input name="due_date" type="date" />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Narration</Label>
                 <Input name="narration" />
               </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label>VAT rate</Label>
-                <Select name="vat_rate_id">
-                  <option value="">None</option>
-                  {(taxRates ?? []).map((tax) => (
-                    <option key={tax.id} value={tax.id}>
-                      {tax.name} ({Number(tax.rate).toFixed(2)}%)
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>NHIL rate</Label>
-                <Select name="nhil_rate_id">
-                  <option value="">None</option>
-                  {(taxRates ?? []).map((tax) => (
-                    <option key={tax.id} value={tax.id}>
-                      {tax.name} ({Number(tax.rate).toFixed(2)}%)
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>GETFund rate</Label>
-                <Select name="getfund_rate_id">
-                  <option value="">None</option>
-                  {(taxRates ?? []).map((tax) => (
-                    <option key={tax.id} value={tax.id}>
-                      {tax.name} ({Number(tax.rate).toFixed(2)}%)
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-zinc-700">
-                <input type="checkbox" name="tax_exempt" /> Tax exempt
-              </label>
             </div>
 
             <DocumentLinesForm accounts={accounts ?? []} />
@@ -258,6 +230,7 @@ export default async function InvoicesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
+                <TableHead>Invoice</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead>Status</TableHead>
@@ -267,62 +240,80 @@ export default async function InvoicesPage() {
             <TableBody>
               {(invoices ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-sm text-zinc-500">
+                  <TableCell colSpan={6} className="text-sm text-zinc-500">
                     No invoices yet.
                   </TableCell>
                 </TableRow>
               ) : (
-                invoices?.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>{invoice.invoice_date}</TableCell>
-                    <TableCell>
-                      {(() => {
-                        const customer = Array.isArray(invoice.customers)
-                          ? invoice.customers[0]
-                          : invoice.customers;
-                        return (customer as { name: string } | null)?.name ?? "-";
-                      })()}
-                    </TableCell>
-                    <TableCell>{Number(invoice.total_gross).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          invoice.status === "posted"
-                            ? "success"
-                            : invoice.status === "approved"
-                            ? "warning"
-                            : "default"
-                        }
-                      >
-                        {invoice.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="space-y-2">
-                      <Link
-                        href={`/staff/invoices/${invoice.id}`}
-                        className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                      >
-                        View
-                      </Link>
-                      {canApprove && invoice.status === "draft" && (
-                        <form action={approveAction}>
-                          <input type="hidden" name="invoice_id" value={invoice.id} />
-                          <Button type="submit" variant="outline">
-                            Approve
-                          </Button>
-                        </form>
-                      )}
-                      {canApprove && invoice.status === "approved" && (
-                        <form action={postAction}>
-                          <input type="hidden" name="invoice_id" value={invoice.id} />
-                          <Button type="submit" variant="outline">
-                            Post
-                          </Button>
-                        </form>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                invoices?.map((invoice) => {
+                  const customer = Array.isArray(invoice.customers)
+                    ? invoice.customers[0]
+                    : invoice.customers;
+                  return (
+                    <TableRow key={invoice.id}>
+                      <TableCell>{invoice.invoice_date}</TableCell>
+                      <TableCell>{invoice.invoice_no}</TableCell>
+                      <TableCell>{(customer as { name: string } | null)?.name ?? "-"}</TableCell>
+                      <TableCell>{Number(invoice.total_gross).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            invoice.status === "posted"
+                              ? "success"
+                              : invoice.status === "approved"
+                              ? "warning"
+                              : invoice.status === "submitted"
+                              ? "default"
+                              : "default"
+                          }
+                        >
+                          {invoice.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="space-y-2">
+                        <Link
+                          href={`/staff/invoices/${invoice.id}`}
+                          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                        >
+                          View
+                        </Link>
+                        {invoice.status === "draft" && invoice.created_by === user.id && (
+                          <form action={submitAction}>
+                            <input type="hidden" name="invoice_id" value={invoice.id} />
+                            <Button type="submit" variant="outline">
+                              Submit
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && invoice.status === "submitted" && invoice.created_by !== user.id && (
+                          <form action={approveAction}>
+                            <input type="hidden" name="invoice_id" value={invoice.id} />
+                            <Button type="submit" variant="outline">
+                              Approve
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && invoice.status === "submitted" && invoice.created_by !== user.id && (
+                          <form action={rejectAction} className="flex items-center gap-2">
+                            <input type="hidden" name="invoice_id" value={invoice.id} />
+                            <Input name="reject_note" placeholder="Reject note" />
+                            <Button type="submit" variant="ghost">
+                              Reject
+                            </Button>
+                          </form>
+                        )}
+                        {canApprove && invoice.status === "approved" && (
+                          <form action={postAction}>
+                            <input type="hidden" name="invoice_id" value={invoice.id} />
+                            <Button type="submit" variant="outline">
+                              Post
+                            </Button>
+                          </form>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

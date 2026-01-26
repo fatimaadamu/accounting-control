@@ -30,7 +30,7 @@ export default async function CustomersPage() {
 
   const { data: customers, error } = await supabaseAdmin()
     .from("customers")
-    .select("id, name, email, phone, tax_exempt, group_id")
+    .select("id, name, tax_exempt, wht_applicable, customer_group_id")
     .eq("company_id", companyId)
     .order("name");
 
@@ -51,11 +51,9 @@ export default async function CustomersPage() {
   async function createAction(formData: FormData) {
     "use server";
     const name = String(formData.get("name") ?? "").trim();
-    const email = String(formData.get("email") ?? "").trim();
-    const phone = String(formData.get("phone") ?? "").trim();
-    const address = String(formData.get("address") ?? "").trim();
     const groupId = String(formData.get("group_id") ?? "");
     const taxExempt = Boolean(formData.get("tax_exempt"));
+    const whtApplicable = Boolean(formData.get("wht_applicable"));
 
     if (!name) {
       throw new Error("Customer name is required.");
@@ -64,11 +62,9 @@ export default async function CustomersPage() {
     await createCustomer({
       company_id: activeCompanyId,
       name,
-      email: email || undefined,
-      phone: phone || undefined,
-      address: address || undefined,
-      group_id: groupId || null,
+      customer_group_id: groupId || null,
       tax_exempt: taxExempt,
+      wht_applicable: whtApplicable,
     });
 
     revalidatePath("/admin/customers");
@@ -78,11 +74,9 @@ export default async function CustomersPage() {
     "use server";
     const id = String(formData.get("customer_id") ?? "");
     const name = String(formData.get("edit_name") ?? "").trim();
-    const email = String(formData.get("edit_email") ?? "").trim();
-    const phone = String(formData.get("edit_phone") ?? "").trim();
-    const address = String(formData.get("edit_address") ?? "").trim();
     const groupId = String(formData.get("edit_group_id") ?? "");
     const taxExempt = Boolean(formData.get("edit_tax_exempt"));
+    const whtApplicable = Boolean(formData.get("edit_wht_applicable"));
 
     if (!id || !name) {
       throw new Error("Customer and name are required.");
@@ -92,11 +86,9 @@ export default async function CustomersPage() {
       id,
       company_id: activeCompanyId,
       name,
-      email: email || undefined,
-      phone: phone || undefined,
-      address: address || undefined,
-      group_id: groupId || null,
+      customer_group_id: groupId || null,
       tax_exempt: taxExempt,
+      wht_applicable: whtApplicable,
     });
 
     revalidatePath("/admin/customers");
@@ -114,15 +106,14 @@ export default async function CustomersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
                 <TableHead>Tax exempt</TableHead>
+                <TableHead>WHT</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(customers ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-sm text-zinc-500">
+                  <TableCell colSpan={3} className="text-sm text-zinc-500">
                     No customers yet.
                   </TableCell>
                 </TableRow>
@@ -130,9 +121,8 @@ export default async function CustomersPage() {
                 customers?.map((customer) => (
                   <TableRow key={customer.id}>
                     <TableCell>{customer.name}</TableCell>
-                    <TableCell>{customer.email ?? "-"}</TableCell>
-                    <TableCell>{customer.phone ?? "-"}</TableCell>
                     <TableCell>{customer.tax_exempt ? "Yes" : "No"}</TableCell>
+                    <TableCell>{customer.wht_applicable ? "Yes" : "No"}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -163,20 +153,11 @@ export default async function CustomersPage() {
                 ))}
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input id="phone" name="phone" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="address">Address</Label>
-              <Input id="address" name="address" />
-            </div>
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" name="tax_exempt" /> Tax exempt
+            </label>
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" name="wht_applicable" defaultChecked /> WHT applicable
             </label>
             <div className="md:col-span-2">
               <Button type="submit">Create customer</Button>
@@ -218,20 +199,11 @@ export default async function CustomersPage() {
               <Label htmlFor="edit_name">Name</Label>
               <Input id="edit_name" name="edit_name" required />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit_email">Email</Label>
-              <Input id="edit_email" name="edit_email" type="email" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit_phone">Phone</Label>
-              <Input id="edit_phone" name="edit_phone" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit_address">Address</Label>
-              <Input id="edit_address" name="edit_address" />
-            </div>
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" name="edit_tax_exempt" /> Tax exempt
+            </label>
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" name="edit_wht_applicable" defaultChecked /> WHT applicable
             </label>
             <div className="md:col-span-2">
               <Button type="submit" variant="outline">

@@ -1,5 +1,7 @@
+import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getApReconciliation, getArReconciliation } from "@/lib/actions/arap";
 import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getAgingBuckets } from "@/lib/data/arap";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -22,10 +24,13 @@ export default async function AgingPage() {
   await requireCompanyAccess(user.id, companyId);
   const activeCompanyId = companyId as string;
 
-  const [customerBuckets, supplierBuckets] = await Promise.all([
-    getAgingBuckets(activeCompanyId, "customers"),
-    getAgingBuckets(activeCompanyId, "suppliers"),
-  ]);
+  const [customerBuckets, supplierBuckets, arReconciliation, apReconciliation] =
+    await Promise.all([
+      getAgingBuckets(activeCompanyId, "customers"),
+      getAgingBuckets(activeCompanyId, "suppliers"),
+      getArReconciliation(activeCompanyId),
+      getApReconciliation(activeCompanyId),
+    ]);
 
   const { data: customers, error: customerError } = await supabaseAdmin()
     .from("customers")
@@ -49,6 +54,22 @@ export default async function AgingPage() {
 
   return (
     <div className="space-y-6">
+      <ReconciliationBanner
+        title="AR reconciliation"
+        description="Control vs customer balances."
+        controlBalance={arReconciliation.arControlBalance}
+        subledgerBalance={arReconciliation.totalCustomerBalance}
+        difference={arReconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ar"
+      />
+      <ReconciliationBanner
+        title="AP reconciliation"
+        description="Control vs supplier balances."
+        controlBalance={apReconciliation.apControlBalance}
+        subledgerBalance={apReconciliation.totalSupplierBalance}
+        difference={apReconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ap"
+      />
       <Card>
         <CardHeader>
           <CardTitle>Debtors aging</CardTitle>

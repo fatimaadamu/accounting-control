@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createTaxRate, mapTaxAccount, upsertCompanyAccounts } from "@/lib/actions/arap-admin";
+import { createTaxRate, upsertCompanyAccounts, upsertTaxAccounts } from "@/lib/actions/arap-admin";
 import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -30,9 +30,9 @@ export default async function TaxPage() {
 
   const { data: taxRates, error } = await supabaseAdmin()
     .from("tax_rates")
-    .select("id, name, tax_type, rate, applies_to, is_withholding")
+    .select("id, tax, rate, effective_from")
     .eq("company_id", companyId)
-    .order("name");
+    .order("effective_from", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
@@ -40,16 +40,15 @@ export default async function TaxPage() {
 
   const { data: taxAccounts, error: taxAccountError } = await supabaseAdmin()
     .from("tax_accounts")
-    .select("tax_rate_id, account_id")
-    .eq("company_id", companyId);
+    .select(
+      "vat_output_account_id, nhil_output_account_id, getfund_output_account_id, wht_receivable_account_id, wht_payable_account_id"
+    )
+    .eq("company_id", companyId)
+    .maybeSingle();
 
   if (taxAccountError) {
     throw new Error(taxAccountError.message);
   }
-
-  const taxAccountMap = new Map(
-    (taxAccounts ?? []).map((row) => [row.tax_rate_id, row.account_id])
-  );
 
   const { data: accounts, error: accountError } = await supabaseAdmin()
     .from("accounts")
@@ -63,9 +62,7 @@ export default async function TaxPage() {
 
   const { data: companyAccounts, error: companyAccountError } = await supabaseAdmin()
     .from("company_accounts")
-    .select(
-      "ar_control_account_id, ap_control_account_id, wht_receivable_account_id, wht_payable_account_id"
-    )
+    .select("ar_control_account_id, ap_control_account_id")
     .eq("company_id", companyId)
     .maybeSingle();
 
@@ -75,41 +72,43 @@ export default async function TaxPage() {
 
   async function createTaxAction(formData: FormData) {
     "use server";
-    const name = String(formData.get("name") ?? "").trim();
-    const taxType = String(formData.get("tax_type") ?? "").trim();
-    const appliesTo = String(formData.get("applies_to") ?? "sales").trim();
+    const tax = String(formData.get("tax") ?? "VAT").trim() as
+      | "VAT"
+      | "NHIL"
+      | "GETFund"
+      | "WHT";
+    const effectiveFrom = String(formData.get("effective_from") ?? "");
     const rate = Number(formData.get("rate") ?? 0);
-    const isWithholding = Boolean(formData.get("is_withholding"));
 
-    if (!name) {
-      throw new Error("Tax name is required.");
+    if (!effectiveFrom) {
+      throw new Error("Effective date is required.");
     }
 
     await createTaxRate({
       company_id: activeCompanyId,
-      name,
-      tax_type: taxType || name,
-      applies_to: appliesTo,
+      tax,
       rate,
-      is_withholding: isWithholding,
+      effective_from: effectiveFrom,
     });
 
     revalidatePath("/admin/tax");
   }
 
-  async function mapTaxAction(formData: FormData) {
+  async function taxAccountsAction(formData: FormData) {
     "use server";
-    const taxRateId = String(formData.get("tax_rate_id") ?? "");
-    const accountId = String(formData.get("account_id") ?? "");
+    const vatOutput = String(formData.get("vat_output_account_id") ?? "");
+    const nhilOutput = String(formData.get("nhil_output_account_id") ?? "");
+    const getfundOutput = String(formData.get("getfund_output_account_id") ?? "");
+    const whtReceivable = String(formData.get("wht_receivable_account_id") ?? "");
+    const whtPayable = String(formData.get("wht_payable_account_id") ?? "");
 
-    if (!taxRateId || !accountId) {
-      throw new Error("Tax rate and account are required.");
-    }
-
-    await mapTaxAccount({
+    await upsertTaxAccounts({
       company_id: activeCompanyId,
-      tax_rate_id: taxRateId,
-      account_id: accountId,
+      vat_output_account_id: vatOutput || null,
+      nhil_output_account_id: nhilOutput || null,
+      getfund_output_account_id: getfundOutput || null,
+      wht_receivable_account_id: whtReceivable || null,
+      wht_payable_account_id: whtPayable || null,
     });
 
     revalidatePath("/admin/tax");
@@ -119,15 +118,11 @@ export default async function TaxPage() {
     "use server";
     const arControl = String(formData.get("ar_control_account_id") ?? "");
     const apControl = String(formData.get("ap_control_account_id") ?? "");
-    const whtReceivable = String(formData.get("wht_receivable_account_id") ?? "");
-    const whtPayable = String(formData.get("wht_payable_account_id") ?? "");
 
     await upsertCompanyAccounts({
       company_id: activeCompanyId,
       ar_control_account_id: arControl || null,
       ap_control_account_id: apControl || null,
-      wht_receivable_account_id: whtReceivable || null,
-      wht_payable_account_id: whtPayable || null,
     });
 
     revalidatePath("/admin/tax");
@@ -144,30 +139,24 @@ export default async function TaxPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
+                <TableHead>Tax</TableHead>
                 <TableHead>Rate</TableHead>
-                <TableHead>Applies to</TableHead>
-                <TableHead>Account mapped</TableHead>
+                <TableHead>Effective</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(taxRates ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-sm text-zinc-500">
+                  <TableCell colSpan={3} className="text-sm text-zinc-500">
                     No tax rates yet.
                   </TableCell>
                 </TableRow>
               ) : (
                 taxRates?.map((tax) => (
                   <TableRow key={tax.id}>
-                    <TableCell>{tax.name}</TableCell>
-                    <TableCell>{tax.tax_type}</TableCell>
+                    <TableCell>{tax.tax}</TableCell>
                     <TableCell>{Number(tax.rate).toFixed(2)}%</TableCell>
-                    <TableCell>{tax.applies_to}</TableCell>
-                    <TableCell>
-                      {taxAccountMap.get(tax.id) ? "Yes" : "No"}
-                    </TableCell>
+                    <TableCell>{tax.effective_from}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -183,28 +172,22 @@ export default async function TaxPage() {
         <CardContent>
           <form action={createTaxAction} className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" name="name" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tax_type">Tax type</Label>
-              <Input id="tax_type" name="tax_type" placeholder="VAT/NHIL/GETFund" />
+              <Label htmlFor="tax">Tax type</Label>
+              <Select id="tax" name="tax" required>
+                <option value="VAT">VAT</option>
+                <option value="NHIL">NHIL</option>
+                <option value="GETFund">GETFund</option>
+                <option value="WHT">WHT</option>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="rate">Rate (%)</Label>
               <Input id="rate" name="rate" type="number" step="0.01" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="applies_to">Applies to</Label>
-              <Select id="applies_to" name="applies_to">
-                <option value="sales">Sales</option>
-                <option value="purchases">Purchases</option>
-                <option value="withholding">Withholding</option>
-              </Select>
+              <Label htmlFor="effective_from">Effective from</Label>
+              <Input id="effective_from" name="effective_from" type="date" required />
             </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-700">
-              <input type="checkbox" name="is_withholding" /> Withholding tax
-            </label>
             <div className="md:col-span-2">
               <Button type="submit">Add tax rate</Button>
             </div>
@@ -214,24 +197,78 @@ export default async function TaxPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Map tax account</CardTitle>
+          <CardTitle>Tax accounts</CardTitle>
+          <CardDescription>Map VAT/NHIL/GETFund/WHT accounts.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={mapTaxAction} className="grid gap-4 md:grid-cols-2">
+          <form action={taxAccountsAction} className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="tax_rate_id">Tax rate</Label>
-              <Select id="tax_rate_id" name="tax_rate_id">
-                <option value="">Select tax rate</option>
-                {(taxRates ?? []).map((tax) => (
-                  <option key={tax.id} value={tax.id}>
-                    {tax.name}
+              <Label htmlFor="vat_output_account_id">VAT output</Label>
+              <Select
+                id="vat_output_account_id"
+                name="vat_output_account_id"
+                defaultValue={taxAccounts?.vat_output_account_id ?? ""}
+              >
+                <option value="">Select account</option>
+                {(accounts ?? []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} - {account.name}
                   </option>
                 ))}
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="account_id">GL account</Label>
-              <Select id="account_id" name="account_id">
+              <Label htmlFor="nhil_output_account_id">NHIL output</Label>
+              <Select
+                id="nhil_output_account_id"
+                name="nhil_output_account_id"
+                defaultValue={taxAccounts?.nhil_output_account_id ?? ""}
+              >
+                <option value="">Select account</option>
+                {(accounts ?? []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} - {account.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="getfund_output_account_id">GETFund output</Label>
+              <Select
+                id="getfund_output_account_id"
+                name="getfund_output_account_id"
+                defaultValue={taxAccounts?.getfund_output_account_id ?? ""}
+              >
+                <option value="">Select account</option>
+                {(accounts ?? []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} - {account.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wht_receivable_account_id">WHT receivable</Label>
+              <Select
+                id="wht_receivable_account_id"
+                name="wht_receivable_account_id"
+                defaultValue={taxAccounts?.wht_receivable_account_id ?? ""}
+              >
+                <option value="">Select account</option>
+                {(accounts ?? []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} - {account.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wht_payable_account_id">WHT payable</Label>
+              <Select
+                id="wht_payable_account_id"
+                name="wht_payable_account_id"
+                defaultValue={taxAccounts?.wht_payable_account_id ?? ""}
+              >
                 <option value="">Select account</option>
                 {(accounts ?? []).map((account) => (
                   <option key={account.id} value={account.id}>
@@ -242,7 +279,7 @@ export default async function TaxPage() {
             </div>
             <div className="md:col-span-2">
               <Button type="submit" variant="outline">
-                Map account
+                Save tax accounts
               </Button>
             </div>
           </form>
@@ -277,36 +314,6 @@ export default async function TaxPage() {
                 id="ap_control_account_id"
                 name="ap_control_account_id"
                 defaultValue={companyAccounts?.ap_control_account_id ?? ""}
-              >
-                <option value="">Select account</option>
-                {(accounts ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="wht_receivable_account_id">WHT receivable</Label>
-              <Select
-                id="wht_receivable_account_id"
-                name="wht_receivable_account_id"
-                defaultValue={companyAccounts?.wht_receivable_account_id ?? ""}
-              >
-                <option value="">Select account</option>
-                {(accounts ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="wht_payable_account_id">WHT payable</Label>
-              <Select
-                id="wht_payable_account_id"
-                name="wht_payable_account_id"
-                defaultValue={companyAccounts?.wht_payable_account_id ?? ""}
               >
                 <option value="">Select account</option>
                 {(accounts ?? []).map((account) => (

@@ -1,8 +1,10 @@
+import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getArReconciliation } from "@/lib/actions/arap";
 import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getCustomerStatement } from "@/lib/data/arap";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -42,11 +44,22 @@ export default async function CustomerStatementsPage({
   const selectedId = searchParams.customer ?? "";
   const mode = searchParams.mode ?? "short";
 
-  const entries = selectedId ? await getCustomerStatement(activeCompanyId, selectedId) : [];
+  const [entries, reconciliation] = await Promise.all([
+    selectedId ? getCustomerStatement(activeCompanyId, selectedId) : Promise.resolve([]),
+    getArReconciliation(activeCompanyId),
+  ]);
   const balance = entries.length ? entries[entries.length - 1].balance : 0;
 
   return (
     <div className="space-y-6">
+      <ReconciliationBanner
+        title="AR reconciliation"
+        description="Control vs customer balances."
+        controlBalance={reconciliation.arControlBalance}
+        subledgerBalance={reconciliation.totalCustomerBalance}
+        difference={reconciliation.difference}
+        detailsHref="/staff/reconciliation?type=ar"
+      />
       <Card>
         <CardHeader>
           <CardTitle>Customer statements</CardTitle>

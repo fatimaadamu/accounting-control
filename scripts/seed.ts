@@ -168,29 +168,25 @@ async function seed() {
 
     await supabase.from("customers").insert({
       company_id: company.id,
-      group_id: customerGroup?.id ?? null,
+      customer_group_id: customerGroup?.id ?? null,
       name: "Default Customer",
-      email: "customer@example.com",
-      phone: "+233000000000",
+      tax_exempt: false,
+      wht_applicable: true,
     });
 
     await supabase.from("suppliers").insert({
       company_id: company.id,
-      group_id: supplierGroup?.id ?? null,
+      supplier_group_id: supplierGroup?.id ?? null,
       name: "Default Supplier",
-      email: "supplier@example.com",
-      phone: "+233000000001",
+      wht_applicable: true,
     });
 
-    const { data: taxes } = await supabase
-      .from("tax_rates")
-      .insert([
-        { company_id: company.id, name: "VAT", tax_type: "VAT", applies_to: "sales", rate: 15, is_withholding: false },
-        { company_id: company.id, name: "NHIL", tax_type: "NHIL", applies_to: "sales", rate: 2.5, is_withholding: false },
-        { company_id: company.id, name: "GETFund", tax_type: "GETFund", applies_to: "sales", rate: 2.5, is_withholding: false },
-        { company_id: company.id, name: "WHT", tax_type: "WHT", applies_to: "withholding", rate: 5, is_withholding: true },
-      ])
-      .select();
+    await supabase.from("tax_rates").insert([
+      { company_id: company.id, tax: "VAT", rate: 15, effective_from: "2025-10-01" },
+      { company_id: company.id, tax: "NHIL", rate: 2.5, effective_from: "2025-10-01" },
+      { company_id: company.id, tax: "GETFund", rate: 2.5, effective_from: "2025-10-01" },
+      { company_id: company.id, tax: "WHT", rate: 5, effective_from: "2025-10-01" },
+    ]);
 
     const { data: accounts } = await supabase
       .from("accounts")
@@ -199,27 +195,19 @@ async function seed() {
 
     const accountMap = new Map((accounts ?? []).map((acc) => [acc.code, acc.id]));
 
-    await supabase.from("tax_accounts").insert(
-      (taxes ?? []).map((tax) => ({
-        company_id: company.id,
-        tax_rate_id: tax.id,
-        account_id:
-          tax.name === "VAT"
-            ? accountMap.get("2200")
-            : tax.name === "NHIL"
-            ? accountMap.get("2210")
-            : tax.name === "GETFund"
-            ? accountMap.get("2220")
-            : accountMap.get("2300"),
-      }))
-    );
+    await supabase.from("tax_accounts").upsert({
+      company_id: company.id,
+      vat_output_account_id: accountMap.get("2200"),
+      nhil_output_account_id: accountMap.get("2210"),
+      getfund_output_account_id: accountMap.get("2220"),
+      wht_receivable_account_id: accountMap.get("1120"),
+      wht_payable_account_id: accountMap.get("2300"),
+    });
 
     await supabase.from("company_accounts").upsert({
       company_id: company.id,
       ar_control_account_id: accountMap.get("1110"),
       ap_control_account_id: accountMap.get("2100"),
-      wht_receivable_account_id: accountMap.get("1120"),
-      wht_payable_account_id: accountMap.get("2300"),
     });
 
     console.log(`Seeded ${company.name}`);
