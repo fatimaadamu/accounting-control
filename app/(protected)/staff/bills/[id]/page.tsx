@@ -1,0 +1,136 @@
+import Link from "next/link";
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+export default async function BillDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const user = await requireUser();
+  const companyId = await getActiveCompanyId();
+
+  if (!companyId) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Bill</CardTitle>
+          <CardDescription>Select a company to continue.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  await requireCompanyAccess(user.id, companyId);
+
+  const { data: bill, error } = await supabaseAdmin()
+    .from("ap_bills")
+    .select(
+      "id, bill_date, due_date, narration, status, total_net, total_gross, suppliers ( name )"
+    )
+    .eq("id", params.id)
+    .eq("company_id", companyId)
+    .single();
+
+  if (error || !bill) {
+    throw new Error(error?.message ?? "Bill not found.");
+  }
+
+  const { data: lines, error: lineError } = await supabaseAdmin()
+    .from("ap_bill_lines")
+    .select("id, description, quantity, unit_price, line_total, accounts ( code, name )")
+    .eq("bill_id", bill.id);
+
+  if (lineError) {
+    throw new Error(lineError.message);
+  }
+
+  return (
+    <div className="space-y-6">
+      <Link
+        href="/staff/bills"
+        className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+      >
+        Back to bills
+      </Link>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Bill details</CardTitle>
+          <CardDescription>
+            {(() => {
+              const supplier = Array.isArray(bill.suppliers)
+                ? bill.suppliers[0]
+                : bill.suppliers;
+              return (supplier as { name: string } | null)?.name ?? "";
+            })()}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-zinc-600">
+          <p>Date: {bill.bill_date}</p>
+          <p>Due: {bill.due_date}</p>
+          <p>Status: {bill.status}</p>
+          <p>Total: {Number(bill.total_gross).toFixed(2)}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lines</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Account</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Qty</TableHead>
+                <TableHead>Unit price</TableHead>
+                <TableHead>Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(lines ?? []).length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-sm text-zinc-500">
+                    No lines.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                lines?.map((line) => (
+                  <TableRow key={line.id}>
+                    <TableCell>
+                      {(() => {
+                        const account = Array.isArray(line.accounts)
+                          ? line.accounts[0]
+                          : line.accounts;
+                        return account
+                          ? `${(account as { code: string; name: string }).code} - ${(account as { code: string; name: string }).name}`
+                          : "-";
+                      })()}
+                    </TableCell>
+                    <TableCell>{line.description ?? "-"}</TableCell>
+                    <TableCell>{Number(line.quantity).toFixed(2)}</TableCell>
+                    <TableCell>{Number(line.unit_price).toFixed(2)}</TableCell>
+                    <TableCell>{Number(line.line_total).toFixed(2)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+              <TableRow>
+                <TableCell colSpan={4} className="font-semibold">
+                  Total
+                </TableCell>
+                <TableCell className="font-semibold">
+                  {Number(bill.total_gross).toFixed(2)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

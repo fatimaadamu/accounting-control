@@ -168,5 +168,80 @@ begin
 
     insert into public.accounts (company_id, category_id, code, name, normal_balance)
     values (company_id, category_id, '6000', 'Salaries Expense', 'debit');
+
+    insert into public.accounts (company_id, category_id, code, name, normal_balance)
+    values
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Cash and Receivables'), '1010', 'Bank', 'debit'),
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Cash and Receivables'), '1110', 'AR Control', 'debit'),
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Cash and Receivables'), '1120', 'WHT Receivable', 'debit');
+
+    insert into public.accounts (company_id, category_id, code, name, normal_balance)
+    values
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Payables'), '2100', 'AP Control', 'credit'),
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Payables'), '2200', 'VAT Payable', 'credit'),
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Payables'), '2210', 'NHIL Payable', 'credit'),
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Payables'), '2220', 'GETFund Payable', 'credit'),
+      (company_id, (select id from public.account_categories ac where ac.company_id = company_id and ac.name = 'Payables'), '2300', 'WHT Payable', 'credit');
+
+    insert into public.customer_groups (company_id, name)
+    values (company_id, 'General Customers');
+
+    insert into public.supplier_groups (company_id, name)
+    values (company_id, 'General Suppliers');
+
+    insert into public.customers (company_id, group_id, name, email, phone)
+    values (
+      company_id,
+      (select id from public.customer_groups cg where cg.company_id = company_id limit 1),
+      'Default Customer',
+      'customer@example.com',
+      '+233000000000'
+    );
+
+    insert into public.suppliers (company_id, group_id, name, email, phone)
+    values (
+      company_id,
+      (select id from public.supplier_groups sg where sg.company_id = company_id limit 1),
+      'Default Supplier',
+      'supplier@example.com',
+      '+233000000001'
+    );
+
+    insert into public.tax_rates (company_id, name, tax_type, applies_to, rate, is_withholding)
+    values
+      (company_id, 'VAT', 'VAT', 'sales', 15.00, false),
+      (company_id, 'NHIL', 'NHIL', 'sales', 2.50, false),
+      (company_id, 'GETFund', 'GETFund', 'sales', 2.50, false),
+      (company_id, 'WHT', 'WHT', 'withholding', 5.00, true);
+
+    insert into public.tax_accounts (company_id, tax_rate_id, account_id)
+    select
+      company_id,
+      tax.id,
+      acc.id
+    from public.tax_rates tax
+    join public.accounts acc on acc.company_id = company_id
+    where tax.company_id = company_id
+      and (
+        (tax.name = 'VAT' and acc.code = '2200') or
+        (tax.name = 'NHIL' and acc.code = '2210') or
+        (tax.name = 'GETFund' and acc.code = '2220') or
+        (tax.name = 'WHT' and acc.code = '2300')
+      );
+
+    insert into public.company_accounts (
+      company_id,
+      ar_control_account_id,
+      ap_control_account_id,
+      wht_receivable_account_id,
+      wht_payable_account_id
+    )
+    values (
+      company_id,
+      (select id from public.accounts a where a.company_id = company_id and a.code = '1110'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '2100'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '1120'),
+      (select id from public.accounts a where a.company_id = company_id and a.code = '2300')
+    );
   end loop;
 end $$;
