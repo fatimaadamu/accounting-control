@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import CompanySwitcher from "@/components/company-switcher";
 import LogoutButton from "@/components/logout-button";
-import { getActiveCompanyId, getUserCompanies, getUserCompanyRoles, requireUser } from "@/lib/auth";
+import { getActiveCompanyId, getUserCompanyRoles, requireUser } from "@/lib/auth";
 
 export default async function ProtectedLayout({
   children,
@@ -10,17 +10,11 @@ export default async function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const companies = await getUserCompanies(user.id);
   const activeCompanyId = await getActiveCompanyId();
   const roles = await getUserCompanyRoles(user.id);
-  const resolvedCompanyId = companies.some(
-    (company) => company.id === activeCompanyId
-  )
-    ? activeCompanyId
-    : null;
-  const isAdminForActiveCompany = roles.some(
-    (role) => role.company_id === resolvedCompanyId && role.role === "Admin"
-  );
+  const isAdminForActiveCompany = activeCompanyId
+    ? roles.some((role) => role.company_id === activeCompanyId && role.role === "Admin")
+    : false;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -147,13 +141,7 @@ export default async function ProtectedLayout({
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden min-w-[220px] md:block">
-              <CompanySwitcher
-                companies={companies.map((company) => ({
-                  id: company.id,
-                  name: company.name,
-                }))}
-                activeCompanyId={resolvedCompanyId}
-              />
+              <CompanySwitcher initialActiveCompanyId={activeCompanyId} />
             </div>
             <span className="hidden text-sm text-zinc-500 md:block">
               {user.email}
@@ -162,13 +150,7 @@ export default async function ProtectedLayout({
           </div>
         </div>
         <div className="mx-auto max-w-6xl px-6 pb-4 md:hidden">
-          <CompanySwitcher
-            companies={companies.map((company) => ({
-              id: company.id,
-              name: company.name,
-            }))}
-            activeCompanyId={resolvedCompanyId}
-          />
+          <CompanySwitcher initialActiveCompanyId={activeCompanyId} />
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
