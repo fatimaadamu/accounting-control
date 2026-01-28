@@ -16,7 +16,25 @@ export type CompanySummary = {
 
 export const getActiveCompanyId = async () => {
   const cookieStore = await cookies();
-  return cookieStore.get("company_id")?.value ?? null;
+  return cookieStore.get("activeCompanyId")?.value ?? null;
+};
+
+export const ensureActiveCompanyId = async (userId: string, nextPath: string) => {
+  const activeCompanyId = await getActiveCompanyId();
+  const companies = await getUserCompanies(userId);
+  if (companies.length === 0) {
+    return null;
+  }
+
+  const hasActive = companies.some((company) => company.id === activeCompanyId);
+  if (activeCompanyId && hasActive) {
+    return activeCompanyId;
+  }
+
+  const defaultCompanyId = companies[0].id;
+  redirect(
+    `/api/company/default?company_id=${defaultCompanyId}&next=${encodeURIComponent(nextPath)}`
+  );
 };
 
 export const getAuthenticatedUser = async () => {

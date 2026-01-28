@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getApReconciliation } from "@/lib/actions/arap";
-import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getSupplierStatement } from "@/lib/data/arap";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -15,17 +15,10 @@ export default async function SupplierStatementsPage({
   searchParams: { supplier?: string; mode?: string };
 }) {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/staff/supplier-statements");
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Supplier statements</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);

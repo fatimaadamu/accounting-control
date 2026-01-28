@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getTrialBalance } from "@/lib/data/trial-balance";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -13,17 +13,10 @@ export default async function TrialBalancePage({
   searchParams: { from?: string; to?: string };
 }) {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/staff/trial-balance");
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Trial Balance</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);
@@ -39,6 +32,18 @@ export default async function TrialBalancePage({
   }
 
   const periodList = periods ?? [];
+  if (periodList.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Trial Balance</CardTitle>
+          <CardDescription>
+            No periods for this company yet. Ask Admin to set up periods.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
   const defaultFrom = periodList[0]?.id ?? "";
   const defaultTo = periodList[periodList.length - 1]?.id ?? "";
   const fromId = searchParams.from ?? defaultFrom;

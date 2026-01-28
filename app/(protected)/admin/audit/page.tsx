@@ -1,18 +1,18 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function AuditPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/admin/audit");
 
   if (!companyId) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Audit log</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
+          <CardDescription>No companies assigned. Ask an admin to grant access.</CardDescription>
         </CardHeader>
       </Card>
     );

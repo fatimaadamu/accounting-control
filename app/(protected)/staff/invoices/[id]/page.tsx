@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function InvoiceDetailPage({
@@ -10,18 +11,16 @@ export default async function InvoiceDetailPage({
 }: {
   params: { id: string };
 }) {
+  const invoiceId = params?.id;
+  const isUuid = typeof invoiceId === "string" && /^[0-9a-fA-F-]{36}$/.test(invoiceId);
+  if (!isUuid || invoiceId === "undefined") {
+    redirect("/staff/invoices");
+  }
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, `/staff/invoices/${invoiceId}`);
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Invoice</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);
@@ -31,7 +30,7 @@ export default async function InvoiceDetailPage({
     .select(
       "id, invoice_no, invoice_date, due_date, narration, status, total_net, total_tax, total_gross, customers ( name )"
     )
-    .eq("id", params.id)
+    .eq("id", invoiceId)
     .eq("company_id", companyId)
     .single();
 

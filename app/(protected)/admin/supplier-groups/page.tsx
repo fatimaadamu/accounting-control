@@ -5,19 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createSupplierGroup } from "@/lib/actions/arap-admin";
-import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function SupplierGroupsPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/admin/supplier-groups");
 
   if (!companyId) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Supplier groups</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
+          <CardDescription>No companies assigned. Ask an admin to grant access.</CardDescription>
         </CardHeader>
       </Card>
     );

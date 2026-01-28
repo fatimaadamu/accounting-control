@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function BillDetailPage({
@@ -11,17 +11,10 @@ export default async function BillDetailPage({
   params: { id: string };
 }) {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, `/staff/bills/${params.id}`);
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Bill</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);

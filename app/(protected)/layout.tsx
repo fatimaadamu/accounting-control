@@ -1,8 +1,14 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 
 import CompanySwitcher from "@/components/company-switcher";
 import LogoutButton from "@/components/logout-button";
-import { getActiveCompanyId, getUserCompanyRoles, requireUser } from "@/lib/auth";
+import {
+  ensureActiveCompanyId,
+  getUserCompanies,
+  getUserCompanyRoles,
+  requireUser,
+} from "@/lib/auth";
 
 export default async function ProtectedLayout({
   children,
@@ -10,11 +16,51 @@ export default async function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const activeCompanyId = await getActiveCompanyId();
+  const headerList = await headers();
+  const explicitPath =
+    headerList.get("x-pathname") ??
+    headerList.get("x-nextjs-matched-path") ??
+    null;
+  const nextUrl = headerList.get("next-url") ?? headerList.get("x-next-url") ?? headerList.get("x-url");
+  let currentPath = explicitPath;
+  if (!currentPath && nextUrl) {
+    if (nextUrl.startsWith("/")) {
+      currentPath = nextUrl;
+    } else {
+      try {
+        const parsed = new URL(nextUrl, "http://localhost");
+        currentPath = `${parsed.pathname}${parsed.search}`;
+      } catch {
+        currentPath = null;
+      }
+    }
+  }
+  if (!currentPath) {
+    currentPath = "/staff/journals";
+  }
+  const activeCompanyId = await ensureActiveCompanyId(user.id, currentPath);
+  const companies = await getUserCompanies(user.id);
+  const uniqueCompanies = Array.from(
+    companies.reduce<Map<string, (typeof companies)[number]>>((map, company) => {
+      const key = company.id || company.name;
+      if (!map.has(key)) {
+        map.set(key, company);
+      }
+      return map;
+    }, new Map())
+  )
+    .map((entry) => entry[1])
+    .sort((a, b) => a.name.localeCompare(b.name));
   const roles = await getUserCompanyRoles(user.id);
   const isAdminForActiveCompany = activeCompanyId
     ? roles.some((role) => role.company_id === activeCompanyId && role.role === "Admin")
     : false;
+  const activeRole = activeCompanyId
+    ? roles.find((role) => role.company_id === activeCompanyId)?.role ?? null
+    : null;
+  const activeCompany = activeCompanyId
+    ? uniqueCompanies.find((company) => company.id === activeCompanyId)
+    : null;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -27,6 +73,12 @@ export default async function ProtectedLayout({
             <nav className="flex items-center gap-2 text-sm text-zinc-600">
               {isAdminForActiveCompany && (
                 <>
+                  <Link
+                    href="/admin/setup"
+                    className="rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                  >
+                    Setup
+                  </Link>
                   <Link
                     href="/admin/companies"
                     className="rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
@@ -80,6 +132,12 @@ export default async function ProtectedLayout({
                     className="rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                   >
                     Audit
+                  </Link>
+                  <Link
+                    href="/admin/cocoa-agents"
+                    className="rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                  >
+                    Cocoa Agents
                   </Link>
                 </>
               )}
@@ -137,12 +195,24 @@ export default async function ProtectedLayout({
               >
                 Trial Balance
               </Link>
+              <Link
+                href="/staff/ctro"
+                className="rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              >
+                CTRO
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden min-w-[220px] md:block">
-              <CompanySwitcher initialActiveCompanyId={activeCompanyId} />
+              <CompanySwitcher companies={uniqueCompanies} activeCompanyId={activeCompanyId} />
             </div>
+            {activeRole && (
+              <span className="hidden rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 md:inline-flex">
+                {activeRole}
+                {activeCompany?.name ? ` • ${activeCompany.name}` : ""}
+              </span>
+            )}
             <span className="hidden text-sm text-zinc-500 md:block">
               {user.email}
             </span>
@@ -150,7 +220,7 @@ export default async function ProtectedLayout({
           </div>
         </div>
         <div className="mx-auto max-w-6xl px-6 pb-4 md:hidden">
-          <CompanySwitcher initialActiveCompanyId={activeCompanyId} />
+          <CompanySwitcher companies={uniqueCompanies} activeCompanyId={activeCompanyId} />
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>

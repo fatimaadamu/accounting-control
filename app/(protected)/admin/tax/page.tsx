@@ -6,20 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createTaxRate, upsertTaxAccounts } from "@/lib/actions/arap-admin";
-import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { createTaxRate, upsertCompanyAccounts, upsertTaxAccounts } from "@/lib/actions/arap-admin";
+import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function TaxPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/admin/tax");
 
   if (!companyId) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Taxes & mappings</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
+          <CardDescription>No companies assigned. Ask an admin to grant access.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -48,6 +48,25 @@ export default async function TaxPage() {
 
   if (taxAccountError) {
     throw new Error(taxAccountError.message);
+  }
+
+  let companyAccounts: { ar_control_account_id: string | null; ap_control_account_id: string | null } | null =
+    null;
+  let companyAccountsAvailable = true;
+  const { data: companyAccountsData, error: companyAccountError } = await supabaseAdmin()
+    .from("company_accounts")
+    .select("ar_control_account_id, ap_control_account_id")
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (companyAccountError) {
+    if (companyAccountError.message.includes("Could not find the table")) {
+      companyAccountsAvailable = false;
+    } else {
+      throw new Error(companyAccountError.message);
+    }
+  } else {
+    companyAccounts = companyAccountsData ?? null;
   }
 
   const { data: accounts, error: accountError } = await supabaseAdmin()
@@ -99,6 +118,20 @@ export default async function TaxPage() {
       getfund_output_account_id: getfundOutput || null,
       wht_receivable_account_id: whtReceivable || null,
       wht_payable_account_id: whtPayable || null,
+    });
+
+    revalidatePath("/admin/tax");
+  }
+
+  async function companyAccountsAction(formData: FormData) {
+    "use server";
+    const arControl = String(formData.get("ar_control_account_id") ?? "");
+    const apControl = String(formData.get("ap_control_account_id") ?? "");
+
+    await upsertCompanyAccounts({
+      company_id: activeCompanyId,
+      ar_control_account_id: arControl || null,
+      ap_control_account_id: apControl || null,
     });
 
     revalidatePath("/admin/tax");
@@ -261,6 +294,64 @@ export default async function TaxPage() {
           </form>
         </CardContent>
       </Card>
+
+      {companyAccountsAvailable ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Control accounts</CardTitle>
+            <CardDescription>Set AR/AP control accounts for posting.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={companyAccountsAction} className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ar_control_account_id">AR control account</Label>
+                <Select
+                  id="ar_control_account_id"
+                  name="ar_control_account_id"
+                  defaultValue={companyAccounts?.ar_control_account_id ?? ""}
+                >
+                  <option value="">Select account</option>
+                  {(accounts ?? []).map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.code} - {account.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ap_control_account_id">AP control account</Label>
+                <Select
+                  id="ap_control_account_id"
+                  name="ap_control_account_id"
+                  defaultValue={companyAccounts?.ap_control_account_id ?? ""}
+                >
+                  <option value="">Select account</option>
+                  {(accounts ?? []).map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.code} - {account.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <Button type="submit" variant="outline">
+                  Save control accounts
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Control accounts</CardTitle>
+            <CardDescription>
+              Control accounts are not available yet. Apply migration
+              <span className="font-semibold"> 002_sprint2_ar_ap.sql</span> to enable this.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
     </div>
   );

@@ -1,0 +1,243 @@
+import Link from "next/link";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import ToastMessage from "@/components/toast-message";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { deleteCtroDraft, postCtro, submitCtro } from "@/lib/actions/ctro";
+import {
+  ensureActiveCompanyId,
+  getUserCompanyRoles,
+  requireCompanyAccess,
+  requireUser,
+} from "@/lib/auth";
+import { canAnyRole } from "@/lib/permissions";
+import { getCtroById } from "@/lib/data/ctro";
+
+export default async function CtroDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: Promise<{ toast?: string; message?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const user = await requireUser();
+  const companyId = await ensureActiveCompanyId(user.id, `/staff/ctro/${params.id}`);
+
+  if (!companyId) {
+    return null;
+  }
+
+  await requireCompanyAccess(user.id, companyId);
+  const roles = await getUserCompanyRoles(user.id);
+  const companyRoles = roles
+    .filter((role) => role.company_id === companyId)
+    .map((role) => role.role);
+  const canSubmitDraft = canAnyRole(companyRoles, "draft", "SUBMIT").allowed;
+  const canPostSubmitted = canAnyRole(companyRoles, "submitted", "POST").allowed;
+  const canDeleteDraft = canAnyRole(companyRoles, "draft", "DELETE_DRAFT").allowed;
+  const isAdmin = companyRoles.includes("Admin");
+
+  const { header, lines, totals } = await getCtroById(params.id, companyId);
+
+  async function submitAction() {
+    "use server";
+    try {
+      await submitCtro(params.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to submit CTRO.";
+      redirect(`/staff/ctro/${params.id}?toast=error&message=${encodeURIComponent(message)}`);
+    }
+    revalidatePath(`/staff/ctro/${params.id}`);
+    redirect(`/staff/ctro/${params.id}?toast=submitted`);
+  }
+
+  async function postAction() {
+    "use server";
+    try {
+      await postCtro(params.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to post CTRO.";
+      redirect(`/staff/ctro/${params.id}?toast=error&message=${encodeURIComponent(message)}`);
+    }
+    revalidatePath(`/staff/ctro/${params.id}`);
+    redirect(`/staff/ctro/${params.id}?toast=posted`);
+  }
+
+  async function submitAndPostAction() {
+    "use server";
+    try {
+      await submitCtro(params.id);
+      await postCtro(params.id);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to submit and post CTRO.";
+      redirect(`/staff/ctro/${params.id}?toast=error&message=${encodeURIComponent(message)}`);
+    }
+    revalidatePath(`/staff/ctro/${params.id}`);
+    redirect(`/staff/ctro/${params.id}?toast=posted`);
+  }
+
+  async function deleteAction() {
+    "use server";
+    try {
+      await deleteCtroDraft(params.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to delete CTRO.";
+      redirect(`/staff/ctro/${params.id}?toast=error&message=${encodeURIComponent(message)}`);
+    }
+    revalidatePath("/staff/ctro");
+    redirect("/staff/ctro?toast=deleted");
+  }
+
+  const agent = Array.isArray(header.cocoa_agents) ? header.cocoa_agents[0] : header.cocoa_agents;
+
+  return (
+    <div className="space-y-6">
+      {resolvedSearchParams?.toast && (
+        <ToastMessage
+          kind={resolvedSearchParams.toast === "error" ? "error" : "success"}
+          message={
+            resolvedSearchParams.toast === "submitted"
+              ? "CTRO submitted"
+              : resolvedSearchParams.toast === "posted"
+              ? "CTRO posted"
+              : resolvedSearchParams.toast === "deleted"
+              ? "CTRO deleted"
+              : resolvedSearchParams.message ?? "Action completed"
+          }
+        />
+      )}
+
+      <div className="flex items-center justify-between">
+        <Link
+          href="/staff/ctro"
+          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+        >
+          Back to CTRO list
+        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/staff/ctro/${params.id}/print-internal`}
+            className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            target="_blank"
+          >
+            Print Internal
+          </Link>
+          <Link
+            href={`/staff/ctro/${params.id}/print-cocoabod`}
+            className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            target="_blank"
+          >
+            Print CocoaBod
+          </Link>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>CTRO {header.ctro_no}</CardTitle>
+          <CardDescription>{header.season ?? ""}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm text-zinc-600 md:grid-cols-2">
+          <div>Date: {header.ctro_date}</div>
+          <div>Region: {header.region ?? "-"}</div>
+          <div>Agent: {(agent as { name?: string } | null)?.name ?? "-"}</div>
+          <div>Status: {header.status}</div>
+          <div>Remarks: {header.remarks ?? "-"}</div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lines</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>District</TableHead>
+                <TableHead>Waybill</TableHead>
+                <TableHead>CTRO Ref</TableHead>
+                <TableHead>Bags</TableHead>
+                <TableHead>Tonnage</TableHead>
+                <TableHead>Evacuation</TableHead>
+                <TableHead>Producer Price</TableHead>
+                <TableHead>Margin</TableHead>
+                <TableHead>Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-sm text-zinc-500">
+                    No lines yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                lines.map((line) => (
+                  <TableRow key={line.id}>
+                    <TableCell>{line.district ?? "-"}</TableCell>
+                    <TableCell>{line.waybill_no ?? "-"}</TableCell>
+                    <TableCell>{line.ctro_ref_no ?? "-"}</TableCell>
+                    <TableCell>{line.bags ?? 0}</TableCell>
+                    <TableCell>{Number(line.tonnage ?? 0).toFixed(3)}</TableCell>
+                    <TableCell>{Number(line.evacuation_cost ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>{Number(line.producer_price_value ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>{Number(line.buyers_margin_value ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>{Number(line.line_total ?? 0).toFixed(2)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Totals</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm text-zinc-600 md:grid-cols-3">
+          <div>Bags: {totals?.total_bags ?? 0}</div>
+          <div>Tonnage: {Number(totals?.total_tonnage ?? 0).toFixed(3)}</div>
+          <div>Evacuation: {Number(totals?.total_evacuation ?? 0).toFixed(2)}</div>
+          <div>Producer price: {Number(totals?.total_producer_price ?? 0).toFixed(2)}</div>
+          <div>Buyers margin: {Number(totals?.total_buyers_margin ?? 0).toFixed(2)}</div>
+          <div>Grand total: {Number(totals?.grand_total ?? 0).toFixed(2)}</div>
+        </CardContent>
+      </Card>
+
+      {header.status === "draft" && canSubmitDraft && (
+        <div className="flex flex-wrap gap-3">
+          <form action={submitAction}>
+            <Button type="submit" variant="outline">
+              Submit
+            </Button>
+          </form>
+          {isAdmin && canPostSubmitted && (
+            <form action={submitAndPostAction}>
+              <Button type="submit">Submit &amp; Post</Button>
+            </form>
+          )}
+          {canDeleteDraft && (
+            <form action={deleteAction}>
+              <Button type="submit" variant="ghost">
+                Delete
+              </Button>
+            </form>
+          )}
+        </div>
+      )}
+
+      {header.status === "submitted" && canPostSubmitted && (
+        <form action={postAction}>
+          <Button type="submit">Post</Button>
+        </form>
+      )}
+    </div>
+  );
+}

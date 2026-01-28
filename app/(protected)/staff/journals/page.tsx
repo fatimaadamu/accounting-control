@@ -7,22 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { approveJournal, createJournalDraft, postJournal, reverseJournal } from "@/lib/actions/journals";
-import { getActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function JournalsPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/staff/journals");
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Journals</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);

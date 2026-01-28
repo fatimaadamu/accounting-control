@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import DocumentLinesForm from "@/components/document-lines-form";
 import ReconciliationBanner from "@/components/reconciliation-banner";
+import ToastMessage from "@/components/toast-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,38 +13,42 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  approveBill,
   createBillDraft,
+  deleteBillDraft,
   getApReconciliation,
   postBill,
-  rejectBill,
   submitBill,
 } from "@/lib/actions/arap";
-import { getActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, getUserCompanyRoles, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { canAnyRole } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export default async function BillsPage() {
+export default async function BillsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ toast?: string; message?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/staff/bills");
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Bills</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);
   const activeCompanyId = companyId as string;
 
   const roles = await getUserCompanyRoles(user.id);
-  const canApprove = roles.some(
-    (role) => role.company_id === companyId && ["Admin", "Manager"].includes(role.role)
-  );
+  const companyRoles = roles
+    .filter((role) => role.company_id === companyId)
+    .map((role) => role.role);
+  const canCreate = canAnyRole(companyRoles, null, "CREATE").allowed;
+  const canSubmitDraft = canAnyRole(companyRoles, "draft", "SUBMIT").allowed;
+  const canPostSubmitted = canAnyRole(companyRoles, "submitted", "POST").allowed;
+  const canDeleteDraft = canAnyRole(companyRoles, "draft", "DELETE_DRAFT").allowed;
+  const isAdmin = companyRoles.includes("Admin");
 
   const { data: suppliers, error: supplierError } = await supabaseAdmin()
     .from("suppliers")
@@ -64,14 +70,32 @@ export default async function BillsPage() {
     throw new Error(periodError.message);
   }
 
-  const { data: accounts, error: accountError } = await supabaseAdmin()
+  const supabase = await createSupabaseServerClient();
+  const { data: accounts, error: accountError } = await supabase
     .from("accounts")
-    .select("id, code, name")
+    .select(
+      "id, code, name, is_active, account_categories!inner(account_groups!inner(account_headers!inner(name)))"
+    )
     .eq("company_id", companyId)
+    .eq("is_active", true)
+    .eq("account_categories.account_groups.account_headers.name", "Expenses")
     .order("code");
 
   if (accountError) {
     throw new Error(accountError.message);
+  }
+
+  if ((periods ?? []).length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Bills</CardTitle>
+          <CardDescription>
+            No periods for this company yet. Ask Admin to set up periods.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
   }
 
   const { data: bills, error: billError } = await supabaseAdmin()
@@ -124,39 +148,81 @@ export default async function BillsPage() {
     });
 
     revalidatePath("/staff/bills");
+    redirect("/staff/bills?toast=saved");
   }
 
   async function submitAction(formData: FormData) {
     "use server";
     const billId = String(formData.get("bill_id") ?? "");
-    await submitBill(billId);
+    try {
+      await submitBill(billId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to submit bill.";
+      redirect(`/staff/bills?toast=error&message=${encodeURIComponent(message)}`);
+    }
     revalidatePath("/staff/bills");
-  }
-
-  async function approveAction(formData: FormData) {
-    "use server";
-    const billId = String(formData.get("bill_id") ?? "");
-    await approveBill(billId);
-    revalidatePath("/staff/bills");
-  }
-
-  async function rejectAction(formData: FormData) {
-    "use server";
-    const billId = String(formData.get("bill_id") ?? "");
-    const note = String(formData.get("reject_note") ?? "").trim();
-    await rejectBill(billId, note || "Rejected");
-    revalidatePath("/staff/bills");
+    redirect("/staff/bills?toast=submitted");
   }
 
   async function postAction(formData: FormData) {
     "use server";
     const billId = String(formData.get("bill_id") ?? "");
-    await postBill(billId);
+    try {
+      await postBill(billId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to post bill.";
+      redirect(`/staff/bills?toast=error&message=${encodeURIComponent(message)}`);
+    }
     revalidatePath("/staff/bills");
+    redirect("/staff/bills?toast=posted");
+  }
+
+  async function submitAndPostAction(formData: FormData) {
+    "use server";
+    const billId = String(formData.get("bill_id") ?? "");
+    try {
+      await submitBill(billId);
+      await postBill(billId);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to submit and post bill.";
+      redirect(`/staff/bills?toast=error&message=${encodeURIComponent(message)}`);
+    }
+    revalidatePath("/staff/bills");
+    redirect("/staff/bills?toast=posted");
+  }
+
+  async function deleteAction(formData: FormData) {
+    "use server";
+    const billId = String(formData.get("bill_id") ?? "");
+    try {
+      await deleteBillDraft(billId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to delete bill.";
+      redirect(`/staff/bills?toast=error&message=${encodeURIComponent(message)}`);
+    }
+    revalidatePath("/staff/bills");
+    redirect("/staff/bills?toast=deleted");
   }
 
   return (
     <div className="space-y-6">
+      {resolvedSearchParams?.toast && (
+        <ToastMessage
+          kind={resolvedSearchParams.toast === "error" ? "error" : "success"}
+          message={
+            resolvedSearchParams.toast === "saved"
+              ? "Bill saved"
+              : resolvedSearchParams.toast === "submitted"
+              ? "Bill submitted"
+              : resolvedSearchParams.toast === "posted"
+              ? "Bill posted"
+              : resolvedSearchParams.toast === "deleted"
+              ? "Bill deleted"
+              : resolvedSearchParams.message ?? "Action completed"
+          }
+        />
+      )}
       <ReconciliationBanner
         title="AP reconciliation"
         description="Control vs supplier balances."
@@ -169,54 +235,66 @@ export default async function BillsPage() {
       <Card>
         <CardHeader>
           <CardTitle>New bill</CardTitle>
-          <CardDescription>Create a bill draft for approval.</CardDescription>
+          <CardDescription>Create a bill draft.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={createAction} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Supplier</Label>
-                <Select name="supplier_id" required>
-                  <option value="">Select supplier</option>
-                  {(suppliers ?? []).map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                </Select>
+          {!canCreate ? (
+            <p className="text-sm text-zinc-600">
+              You do not have permission to create bills.
+            </p>
+          ) : (
+            <form action={createAction} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Supplier</Label>
+                  <Select name="supplier_id" required>
+                    <option value="">Select supplier</option>
+                    {(suppliers ?? []).map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Period</Label>
+                  <Select name="period_id" required>
+                    <option value="">Select period</option>
+                    {(periods ?? []).map((period) => (
+                      <option key={period.id} value={period.id}>
+                        {period.period_year}-{String(period.period_month).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Bill no</Label>
+                  <Input name="bill_no" required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Bill date</Label>
+                  <Input name="bill_date" type="date" required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Due date</Label>
+                  <Input name="due_date" type="date" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Narration</Label>
+                  <Input name="narration" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Period</Label>
-                <Select name="period_id" required>
-                  <option value="">Select period</option>
-                  {(periods ?? []).map((period) => (
-                    <option key={period.id} value={period.id}>
-                      {period.period_year}-{String(period.period_month).padStart(2, "0")}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Bill no</Label>
-                <Input name="bill_no" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Bill date</Label>
-                <Input name="bill_date" type="date" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Due date</Label>
-                <Input name="due_date" type="date" />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Narration</Label>
-                <Input name="narration" />
-              </div>
-            </div>
 
-            <DocumentLinesForm accounts={accounts ?? []} />
-            <Button type="submit">Save draft</Button>
-          </form>
+              {accounts && accounts.length === 0 ? (
+                <p className="text-sm text-zinc-600">
+                  No expense accounts available. Ask Admin to add an expense account.
+                </p>
+              ) : (
+                <DocumentLinesForm accounts={accounts ?? []} />
+              )}
+              <Button type="submit">Save draft</Button>
+            </form>
+          )}
         </CardContent>
       </Card>
 
@@ -277,7 +355,7 @@ export default async function BillsPage() {
                         >
                           View
                         </Link>
-                        {bill.status === "draft" && bill.created_by === user.id && (
+                        {bill.status === "draft" && canSubmitDraft && (
                           <form action={submitAction}>
                             <input type="hidden" name="bill_id" value={bill.id} />
                             <Button type="submit" variant="outline">
@@ -285,28 +363,30 @@ export default async function BillsPage() {
                             </Button>
                           </form>
                         )}
-                        {canApprove && bill.status === "submitted" && bill.created_by !== user.id && (
-                          <form action={approveAction}>
-                            <input type="hidden" name="bill_id" value={bill.id} />
-                            <Button type="submit" variant="outline">
-                              Approve
-                            </Button>
-                          </form>
-                        )}
-                        {canApprove && bill.status === "submitted" && bill.created_by !== user.id && (
-                          <form action={rejectAction} className="flex items-center gap-2">
-                            <input type="hidden" name="bill_id" value={bill.id} />
-                            <Input name="reject_note" placeholder="Reject note" />
-                            <Button type="submit" variant="ghost">
-                              Reject
-                            </Button>
-                          </form>
-                        )}
-                        {canApprove && bill.status === "approved" && (
+                        {bill.status === "draft" &&
+                          isAdmin &&
+                          canSubmitDraft &&
+                          canPostSubmitted && (
+                            <form action={submitAndPostAction}>
+                              <input type="hidden" name="bill_id" value={bill.id} />
+                              <Button type="submit" variant="default">
+                                Submit &amp; Post
+                              </Button>
+                            </form>
+                          )}
+                        {bill.status === "submitted" && canPostSubmitted && (
                           <form action={postAction}>
                             <input type="hidden" name="bill_id" value={bill.id} />
                             <Button type="submit" variant="outline">
                               Post
+                            </Button>
+                          </form>
+                        )}
+                        {bill.status === "draft" && canDeleteDraft && (
+                          <form action={deleteAction}>
+                            <input type="hidden" name="bill_id" value={bill.id} />
+                            <Button type="submit" variant="ghost">
+                              Delete
                             </Button>
                           </form>
                         )}

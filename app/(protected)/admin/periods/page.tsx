@@ -5,19 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { closePeriod, reopenPeriod } from "@/lib/actions/periods";
-import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function PeriodsPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/admin/periods");
 
   if (!companyId) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Periods</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
+          <CardDescription>No companies assigned. Ask an admin to grant access.</CardDescription>
         </CardHeader>
       </Card>
     );

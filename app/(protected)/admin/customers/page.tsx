@@ -7,19 +7,19 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createCustomer, updateCustomer } from "@/lib/actions/arap-admin";
-import { getActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function CustomersPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/admin/customers");
 
   if (!companyId) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Customers</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
+          <CardDescription>No companies assigned. Ask an admin to grant access.</CardDescription>
         </CardHeader>
       </Card>
     );

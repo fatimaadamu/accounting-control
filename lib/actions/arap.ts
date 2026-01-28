@@ -3,6 +3,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireCompanyAccess, requireCompanyRole, requireUser } from "@/lib/auth";
+import { canAnyRole, type DocStatus } from "@/lib/permissions";
 import { createPostedJournalFromLines } from "@/lib/actions/journals";
 
 type AuditPayload = {
@@ -250,8 +251,14 @@ export const submitInvoice = async (invoice_id: string) => {
     throw new Error(error?.message ?? "Invoice not found.");
   }
 
-  if (invoice.created_by !== user.id) {
-    throw new Error("Only the maker can submit this invoice.");
+  const companyRoles = await requireCompanyAccess(user.id, invoice.company_id);
+  const submitPermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    invoice.status as DocStatus,
+    "SUBMIT"
+  );
+  if (!submitPermission.allowed) {
+    throw new Error(submitPermission.reason ?? "You do not have permission to submit.");
   }
 
   if (invoice.status !== "draft") {
@@ -364,7 +371,10 @@ export const rejectInvoice = async (invoice_id: string, note: string) => {
   });
 };
 
-export const postInvoice = async (invoice_id: string) => {
+export const postInvoice = async (
+  invoice_id: string,
+  options: { skipApproval?: boolean; skipRole?: boolean } = {}
+) => {
   const user = await requireUser();
 
   const { data: invoice, error } = await supabaseAdmin()
@@ -379,10 +389,24 @@ export const postInvoice = async (invoice_id: string) => {
     throw new Error(error?.message ?? "Invoice not found.");
   }
 
-  await requireCompanyRole(user.id, invoice.company_id, ["Admin", "Manager"]);
+  if (!options.skipRole) {
+    const companyRoles = await requireCompanyAccess(user.id, invoice.company_id);
+    const postPermission = canAnyRole(
+      companyRoles.map((role) => role.role),
+      invoice.status as DocStatus,
+      "POST"
+    );
+    if (!postPermission.allowed) {
+      throw new Error(postPermission.reason ?? "You do not have permission to post.");
+    }
+  }
 
-  if (invoice.status !== "approved") {
-    throw new Error("Only approved invoices can be posted.");
+  if (!options.skipApproval && invoice.status !== "submitted") {
+    throw new Error("Only submitted invoices can be posted.");
+  }
+
+  if (invoice.status === "posted") {
+    throw new Error("Invoice is already posted.");
   }
 
   await ensurePeriodOpen(invoice.period_id);
@@ -622,8 +646,16 @@ export const submitReceipt = async (receipt_id: string) => {
     throw new Error(error?.message ?? "Receipt not found.");
   }
 
-  if (receipt.created_by !== user.id) {
-    throw new Error("Only the maker can submit this receipt.");
+  const companyRoles = await requireCompanyAccess(user.id, receipt.company_id);
+  const submitPermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    receipt.status as DocStatus,
+    "SUBMIT"
+  );
+  if (!submitPermission.allowed) {
+    throw new Error(
+      submitPermission.reason ?? "You do not have permission to submit."
+    );
   }
 
   if (receipt.status !== "draft") {
@@ -736,7 +768,10 @@ export const rejectReceipt = async (receipt_id: string, note: string) => {
   });
 };
 
-export const postReceipt = async (receipt_id: string) => {
+export const postReceipt = async (
+  receipt_id: string,
+  options: { skipApproval?: boolean; skipRole?: boolean } = {}
+) => {
   const user = await requireUser();
 
   const { data: receipt, error } = await supabaseAdmin()
@@ -751,10 +786,26 @@ export const postReceipt = async (receipt_id: string) => {
     throw new Error(error?.message ?? "Receipt not found.");
   }
 
-  await requireCompanyRole(user.id, receipt.company_id, ["Admin", "Manager"]);
+  if (!options.skipRole) {
+    const companyRoles = await requireCompanyAccess(user.id, receipt.company_id);
+    const postPermission = canAnyRole(
+      companyRoles.map((role) => role.role),
+      receipt.status as DocStatus,
+      "POST"
+    );
+    if (!postPermission.allowed) {
+      throw new Error(
+        postPermission.reason ?? "You do not have permission to post."
+      );
+    }
+  }
 
-  if (receipt.status !== "approved") {
-    throw new Error("Only approved receipts can be posted.");
+  if (!options.skipApproval && receipt.status !== "submitted") {
+    throw new Error("Only submitted receipts can be posted.");
+  }
+
+  if (receipt.status === "posted") {
+    throw new Error("Receipt is already posted.");
   }
 
   await ensurePeriodOpen(receipt.period_id);
@@ -921,8 +972,16 @@ export const submitBill = async (bill_id: string) => {
     throw new Error(error?.message ?? "Bill not found.");
   }
 
-  if (bill.created_by !== user.id) {
-    throw new Error("Only the maker can submit this bill.");
+  const companyRoles = await requireCompanyAccess(user.id, bill.company_id);
+  const submitPermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    bill.status as DocStatus,
+    "SUBMIT"
+  );
+  if (!submitPermission.allowed) {
+    throw new Error(
+      submitPermission.reason ?? "You do not have permission to submit."
+    );
   }
 
   if (bill.status !== "draft") {
@@ -1035,7 +1094,10 @@ export const rejectBill = async (bill_id: string, note: string) => {
   });
 };
 
-export const postBill = async (bill_id: string) => {
+export const postBill = async (
+  bill_id: string,
+  options: { skipApproval?: boolean; skipRole?: boolean } = {}
+) => {
   const user = await requireUser();
 
   const { data: bill, error } = await supabaseAdmin()
@@ -1048,10 +1110,26 @@ export const postBill = async (bill_id: string) => {
     throw new Error(error?.message ?? "Bill not found.");
   }
 
-  await requireCompanyRole(user.id, bill.company_id, ["Admin", "Manager"]);
+  if (!options.skipRole) {
+    const companyRoles = await requireCompanyAccess(user.id, bill.company_id);
+    const postPermission = canAnyRole(
+      companyRoles.map((role) => role.role),
+      bill.status as DocStatus,
+      "POST"
+    );
+    if (!postPermission.allowed) {
+      throw new Error(
+        postPermission.reason ?? "You do not have permission to post."
+      );
+    }
+  }
 
-  if (bill.status !== "approved") {
-    throw new Error("Only approved bills can be posted.");
+  if (!options.skipApproval && bill.status !== "submitted") {
+    throw new Error("Only submitted bills can be posted.");
+  }
+
+  if (bill.status === "posted") {
+    throw new Error("Bill is already posted.");
   }
 
   await ensurePeriodOpen(bill.period_id);
@@ -1234,8 +1312,16 @@ export const submitVoucher = async (voucher_id: string) => {
     throw new Error(error?.message ?? "Voucher not found.");
   }
 
-  if (voucher.created_by !== user.id) {
-    throw new Error("Only the maker can submit this voucher.");
+  const companyRoles = await requireCompanyAccess(user.id, voucher.company_id);
+  const submitPermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    voucher.status as DocStatus,
+    "SUBMIT"
+  );
+  if (!submitPermission.allowed) {
+    throw new Error(
+      submitPermission.reason ?? "You do not have permission to submit."
+    );
   }
 
   if (voucher.status !== "draft") {
@@ -1348,7 +1434,10 @@ export const rejectVoucher = async (voucher_id: string, note: string) => {
   });
 };
 
-export const postVoucher = async (voucher_id: string) => {
+export const postVoucher = async (
+  voucher_id: string,
+  options: { skipApproval?: boolean; skipRole?: boolean } = {}
+) => {
   const user = await requireUser();
 
   const { data: voucher, error } = await supabaseAdmin()
@@ -1363,10 +1452,26 @@ export const postVoucher = async (voucher_id: string) => {
     throw new Error(error?.message ?? "Voucher not found.");
   }
 
-  await requireCompanyRole(user.id, voucher.company_id, ["Admin", "Manager"]);
+  if (!options.skipRole) {
+    const companyRoles = await requireCompanyAccess(user.id, voucher.company_id);
+    const postPermission = canAnyRole(
+      companyRoles.map((role) => role.role),
+      voucher.status as DocStatus,
+      "POST"
+    );
+    if (!postPermission.allowed) {
+      throw new Error(
+        postPermission.reason ?? "You do not have permission to post."
+      );
+    }
+  }
 
-  if (voucher.status !== "approved") {
-    throw new Error("Only approved vouchers can be posted.");
+  if (!options.skipApproval && voucher.status !== "submitted") {
+    throw new Error("Only submitted vouchers can be posted.");
+  }
+
+  if (voucher.status === "posted") {
+    throw new Error("Voucher is already posted.");
   }
 
   await ensurePeriodOpen(voucher.period_id);
@@ -1452,6 +1557,186 @@ export const postVoucher = async (voucher_id: string) => {
     action: "posted",
     before: { status: voucher.status },
     after: { status: "posted", journal_id: journalId },
+    created_by: user.id,
+  });
+};
+
+export const deleteInvoiceDraft = async (invoice_id: string) => {
+  const user = await requireUser();
+  const { data: invoice, error } = await supabaseAdmin()
+    .from("invoices")
+    .select("id, company_id, status")
+    .eq("id", invoice_id)
+    .single();
+
+  if (error || !invoice) {
+    throw new Error(error?.message ?? "Invoice not found.");
+  }
+
+  const companyRoles = await requireCompanyAccess(user.id, invoice.company_id);
+  const deletePermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    invoice.status as DocStatus,
+    "DELETE_DRAFT"
+  );
+  if (!deletePermission.allowed) {
+    throw new Error(deletePermission.reason ?? "You do not have permission to delete.");
+  }
+
+  if (invoice.status !== "draft") {
+    throw new Error("Only draft invoices can be deleted.");
+  }
+
+  const { error: deleteError } = await supabaseAdmin()
+    .from("invoices")
+    .delete()
+    .eq("id", invoice_id);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  await insertAuditLog({
+    company_id: invoice.company_id,
+    entity: "invoices",
+    entity_id: invoice_id,
+    action: "deleted",
+    before: { status: invoice.status },
+    created_by: user.id,
+  });
+};
+
+export const deleteReceiptDraft = async (receipt_id: string) => {
+  const user = await requireUser();
+  const { data: receipt, error } = await supabaseAdmin()
+    .from("receipts")
+    .select("id, company_id, status")
+    .eq("id", receipt_id)
+    .single();
+
+  if (error || !receipt) {
+    throw new Error(error?.message ?? "Receipt not found.");
+  }
+
+  const companyRoles = await requireCompanyAccess(user.id, receipt.company_id);
+  const deletePermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    receipt.status as DocStatus,
+    "DELETE_DRAFT"
+  );
+  if (!deletePermission.allowed) {
+    throw new Error(deletePermission.reason ?? "You do not have permission to delete.");
+  }
+
+  if (receipt.status !== "draft") {
+    throw new Error("Only draft receipts can be deleted.");
+  }
+
+  const { error: deleteError } = await supabaseAdmin()
+    .from("receipts")
+    .delete()
+    .eq("id", receipt_id);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  await insertAuditLog({
+    company_id: receipt.company_id,
+    entity: "receipts",
+    entity_id: receipt_id,
+    action: "deleted",
+    before: { status: receipt.status },
+    created_by: user.id,
+  });
+};
+
+export const deleteBillDraft = async (bill_id: string) => {
+  const user = await requireUser();
+  const { data: bill, error } = await supabaseAdmin()
+    .from("bills")
+    .select("id, company_id, status")
+    .eq("id", bill_id)
+    .single();
+
+  if (error || !bill) {
+    throw new Error(error?.message ?? "Bill not found.");
+  }
+
+  const companyRoles = await requireCompanyAccess(user.id, bill.company_id);
+  const deletePermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    bill.status as DocStatus,
+    "DELETE_DRAFT"
+  );
+  if (!deletePermission.allowed) {
+    throw new Error(deletePermission.reason ?? "You do not have permission to delete.");
+  }
+
+  if (bill.status !== "draft") {
+    throw new Error("Only draft bills can be deleted.");
+  }
+
+  const { error: deleteError } = await supabaseAdmin()
+    .from("bills")
+    .delete()
+    .eq("id", bill_id);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  await insertAuditLog({
+    company_id: bill.company_id,
+    entity: "bills",
+    entity_id: bill_id,
+    action: "deleted",
+    before: { status: bill.status },
+    created_by: user.id,
+  });
+};
+
+export const deleteVoucherDraft = async (voucher_id: string) => {
+  const user = await requireUser();
+  const { data: voucher, error } = await supabaseAdmin()
+    .from("payment_vouchers")
+    .select("id, company_id, status")
+    .eq("id", voucher_id)
+    .single();
+
+  if (error || !voucher) {
+    throw new Error(error?.message ?? "Voucher not found.");
+  }
+
+  const companyRoles = await requireCompanyAccess(user.id, voucher.company_id);
+  const deletePermission = canAnyRole(
+    companyRoles.map((role) => role.role),
+    voucher.status as DocStatus,
+    "DELETE_DRAFT"
+  );
+  if (!deletePermission.allowed) {
+    throw new Error(deletePermission.reason ?? "You do not have permission to delete.");
+  }
+
+  if (voucher.status !== "draft") {
+    throw new Error("Only draft vouchers can be deleted.");
+  }
+
+  const { error: deleteError } = await supabaseAdmin()
+    .from("payment_vouchers")
+    .delete()
+    .eq("id", voucher_id);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  await insertAuditLog({
+    company_id: voucher.company_id,
+    entity: "payment_vouchers",
+    entity_id: voucher_id,
+    action: "deleted",
+    before: { status: voucher.status },
     created_by: user.id,
   });
 };

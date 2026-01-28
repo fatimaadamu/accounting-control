@@ -2,23 +2,16 @@ import ReconciliationBanner from "@/components/reconciliation-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getApReconciliation, getArReconciliation } from "@/lib/actions/arap";
-import { getActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
+import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getAgingBuckets } from "@/lib/data/arap";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function AgingPage() {
   const user = await requireUser();
-  const companyId = await getActiveCompanyId();
+  const companyId = await ensureActiveCompanyId(user.id, "/staff/aging");
 
   if (!companyId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Aging</CardTitle>
-          <CardDescription>Select a company to continue.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
   }
 
   await requireCompanyAccess(user.id, companyId);

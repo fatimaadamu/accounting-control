@@ -17,17 +17,20 @@ export const createCompany = async (
 
   const { data: company, error } = await supabaseAdmin()
     .from("companies")
-    .insert({ name, base_currency: baseCurrency, fy_start_month: fyStartMonth })
+    .upsert(
+      { name, base_currency: baseCurrency, fy_start_month: fyStartMonth },
+      { onConflict: "name" }
+    )
     .select("id, name, base_currency")
     .single();
 
-  if (error) {
-    throw new Error(error.message);
+  if (error || !company) {
+    throw new Error(error?.message ?? "Unable to create company.");
   }
 
   const { error: roleError } = await supabaseAdmin()
     .from("user_company_roles")
-    .insert({ user_id: user.id, company_id: company.id, role: "Admin" });
+    .upsert({ user_id: user.id, company_id: company.id, role: "Admin" }, { onConflict: "user_id,company_id,role" });
 
   if (roleError) {
     throw new Error(roleError.message);

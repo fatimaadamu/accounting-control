@@ -37,6 +37,7 @@ export default function DocumentLinesForm({
   fieldName = "lines_json",
 }: DocumentLinesFormProps) {
   const [lines, setLines] = React.useState<LineInput[]>([emptyLine()]);
+  const [error, setError] = React.useState<string | null>(null);
 
   const updateLine = (index: number, update: Partial<LineInput>) => {
     setLines((prev) =>
@@ -44,11 +45,37 @@ export default function DocumentLinesForm({
         lineIndex === index ? { ...line, ...update } : line
       )
     );
+    setError(null);
   };
 
   const removeLine = (index: number) => {
     setLines((prev) => prev.filter((_, lineIndex) => lineIndex !== index));
+    setError(null);
   };
+
+  React.useEffect(() => {
+    const form = document
+      .querySelector(`input[name="${fieldName}"]`)
+      ?.closest("form");
+    if (!form) return;
+
+    const handleSubmit = (event: Event) => {
+      const hasLine = lines.some((line) => {
+        const qty = Number(line.quantity) || 0;
+        const price = Number(line.unit_price) || 0;
+        const net = qty * price;
+        return line.account_id && net > 0;
+      });
+
+      if (!hasLine) {
+        event.preventDefault();
+        setError("Add at least one line with an income account and amount.");
+      }
+    };
+
+    form.addEventListener("submit", handleSubmit);
+    return () => form.removeEventListener("submit", handleSubmit);
+  }, [fieldName, lines]);
 
   return (
     <div className="space-y-4">
@@ -64,6 +91,12 @@ export default function DocumentLinesForm({
           Add line
         </Button>
       </div>
+
+      {error && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {error}
+        </div>
+      )}
 
       <div className="space-y-3">
         {lines.map((line, index) => (
