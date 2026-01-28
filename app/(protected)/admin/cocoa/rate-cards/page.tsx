@@ -22,7 +22,7 @@ const parseCsv = (raw: string) =>
 
 const DEFAULT_DISTRICT_NAME = "General";
 
-const ensureDefaultDistrict = async (regionId: string) => {
+const ensureDefaultDistrict = async (regionId: string): Promise<string> => {
   const { data: existing } = await supabaseAdmin()
     .from("cocoa_districts")
     .select("id")
@@ -433,6 +433,9 @@ export default async function CocoaRateCardsPage({
       let districtId = districtMap.get(regionId);
       if (!districtId) {
         districtId = await ensureDefaultDistrict(regionId);
+        if (!districtId) {
+          throw new Error(`Unable to resolve default district for region ${regionId}.`);
+        }
         districtMap.set(regionId, districtId);
       }
 
