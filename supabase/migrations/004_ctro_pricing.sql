@@ -1,34 +1,36 @@
 -- 004_ctro_pricing.sql
 -- Cocoa geography + effective-dated CTRO rate cards (explicit per-tonne rates)
 
+create extension if not exists "pgcrypto";
+
 -- Geography
 create table if not exists public.cocoa_regions (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   name text not null unique
 );
 
 create table if not exists public.cocoa_districts (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   region_id uuid not null references public.cocoa_regions(id) on delete cascade,
   name text not null,
   unique(region_id, name)
 );
 
 create table if not exists public.cocoa_depots (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   district_id uuid not null references public.cocoa_districts(id) on delete cascade,
   name text not null,
   unique(district_id, name)
 );
 
 create table if not exists public.takeover_centers (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   name text not null unique
 );
 
 -- Effective-dated rate cards (explicit)
 create table if not exists public.cocoa_rate_cards (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   season text not null,
   effective_from date not null,
@@ -39,7 +41,7 @@ create table if not exists public.cocoa_rate_cards (
 );
 
 create table if not exists public.cocoa_rate_card_lines (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   rate_card_id uuid not null references public.cocoa_rate_cards(id) on delete cascade,
 
   region_id uuid not null references public.cocoa_regions(id),
