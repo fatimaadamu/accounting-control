@@ -365,17 +365,14 @@ export default async function CocoaRateCardsPage({
     const districtRegionMap = new Map(
       districtList.map((district) => [district.id, district.region_id])
     );
-    const depotMap = new Map(
-      depotList
-        .map((depot) => {
-          const regionId = districtRegionMap.get(depot.district_id);
-          if (!regionId) {
-            return null;
-          }
-          return [`${regionId}:${depot.name.toLowerCase()}`, depot.id] as const;
-        })
-        .filter((entry): entry is readonly [string, string] => entry !== null)
-    );
+    const depotMap = new Map<string, string>();
+    for (const depot of depotList) {
+      const regionId = districtRegionMap.get(depot.district_id);
+      if (!regionId) {
+        continue;
+      }
+      depotMap.set(`${regionId}:${depot.name.toLowerCase()}`, depot.id);
+    }
     const centerMap = new Map(
       centerList.map((center) => [center.name.toLowerCase(), center.id])
     );
