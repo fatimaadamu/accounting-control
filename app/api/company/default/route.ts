@@ -36,6 +36,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/admin/companies", origin));
   }
 
+  const { data: company } = await supabaseAdmin()
+    .from("companies")
+    .select("id")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (!company) {
+    return NextResponse.redirect(new URL("/admin/companies", origin));
+  }
+
   const { data: role, error } = await supabaseAdmin()
     .from("user_company_roles")
     .select("company_id")
@@ -44,7 +54,15 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (error || !role) {
-    return NextResponse.redirect(new URL("/admin/companies", origin));
+    const { data: adminRole } = await supabaseAdmin()
+      .from("user_company_roles")
+      .select("company_id")
+      .eq("user_id", data.user.id)
+      .eq("role", "Admin")
+      .limit(1)
+      .maybeSingle();
+    const fallback = adminRole ? "/admin/companies" : "/staff/journals";
+    return NextResponse.redirect(new URL(fallback, origin));
   }
 
   response.cookies.set({

@@ -13,12 +13,22 @@ type CtroLineInput = {
   cwc?: string;
   purity_cert_no?: string;
   line_date?: string;
+  region_id?: string;
+  district_id?: string;
+  depot_id?: string | null;
+  takeover_center_id?: string;
+  bag_weight_kg?: number;
   bags?: number;
   tonnage?: number;
+  applied_producer_price_per_tonne?: number;
+  applied_buyer_margin_per_tonne?: number;
+  applied_secondary_evac_cost_per_tonne?: number;
+  applied_takeover_price_per_tonne?: number;
   producer_price_value?: number;
   buyers_margin_value?: number;
   evacuation_cost?: number;
   evacuation_treatment?: "company_paid" | "deducted";
+  line_total?: number;
 };
 
 type CtroTotals = {
@@ -57,7 +67,14 @@ const computeTotals = (lines: CtroLineInput[]) => {
     const evacuation = round2(Number(line.evacuation_cost || 0));
     const producer = round2(Number(line.producer_price_value || 0));
     const margin = round2(Number(line.buyers_margin_value || 0));
-    const lineTotal = round2(evacuation + producer + margin);
+    const appliedProducer = round2(Number(line.applied_producer_price_per_tonne || 0));
+    const appliedMargin = round2(Number(line.applied_buyer_margin_per_tonne || 0));
+    const appliedEvac = round2(Number(line.applied_secondary_evac_cost_per_tonne || 0));
+    const appliedTakeover =
+      line.applied_takeover_price_per_tonne !== undefined
+        ? round2(Number(line.applied_takeover_price_per_tonne || 0))
+        : round2(appliedProducer + appliedMargin + appliedEvac);
+    const lineTotal = round2(tonnage * appliedTakeover);
 
     totals.total_bags += bags;
     totals.total_tonnage += tonnage;
@@ -68,9 +85,18 @@ const computeTotals = (lines: CtroLineInput[]) => {
 
     return {
       ...line,
+      region_id: line.region_id ?? null,
+      district_id: line.district_id ?? null,
+      depot_id: line.depot_id ?? null,
+      takeover_center_id: line.takeover_center_id ?? null,
+      bag_weight_kg: Number(line.bag_weight_kg ?? 64),
       bags,
       tonnage,
       evacuation_cost: evacuation,
+      applied_producer_price_per_tonne: appliedProducer,
+      applied_buyer_margin_per_tonne: appliedMargin,
+      applied_secondary_evac_cost_per_tonne: appliedEvac,
+      applied_takeover_price_per_tonne: appliedTakeover,
       producer_price_value: producer,
       buyers_margin_value: margin,
       line_total: lineTotal,
@@ -217,8 +243,18 @@ export const createCtroDraft = async (payload: {
       cwc: line.cwc ?? null,
       purity_cert_no: line.purity_cert_no ?? null,
       line_date: line.line_date ?? null,
+      region_id: line.region_id ?? null,
+      district_id: line.district_id ?? null,
+      depot_id: line.depot_id ?? null,
+      takeover_center_id: line.takeover_center_id ?? null,
+      bag_weight_kg: line.bag_weight_kg ?? 64,
       bags: line.bags ?? 0,
       tonnage: line.tonnage ?? 0,
+      applied_producer_price_per_tonne: line.applied_producer_price_per_tonne ?? 0,
+      applied_buyer_margin_per_tonne: line.applied_buyer_margin_per_tonne ?? 0,
+      applied_secondary_evac_cost_per_tonne:
+        line.applied_secondary_evac_cost_per_tonne ?? 0,
+      applied_takeover_price_per_tonne: line.applied_takeover_price_per_tonne ?? 0,
       producer_price_value: line.producer_price_value ?? 0,
       buyers_margin_value: line.buyers_margin_value ?? 0,
       evacuation_cost: line.evacuation_cost ?? 0,

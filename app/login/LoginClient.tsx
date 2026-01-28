@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function LoginClient() {
   const router = useRouter();
@@ -20,19 +19,6 @@ export default function LoginClient() {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    const checkSession = async () => {
-      const supabase = createSupabaseBrowserClient();
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        const returnTo = searchParams.get("returnTo") || "/staff/journals";
-        router.replace(returnTo);
-      }
-    };
-
-    checkSession();
-  }, [router, searchParams]);
-
   if (!mounted) {
     return (
       <div
@@ -40,7 +26,7 @@ export default function LoginClient() {
         suppressHydrationWarning
       >
         <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">
-          Loading…
+          Loading...
         </div>
       </div>
     );
@@ -55,20 +41,50 @@ export default function LoginClient() {
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
 
-    const supabase = createSupabaseBrowserClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = new AbortController();
 
-    if (signInError) {
-      setError(signInError.message);
+    try {
+      timeoutId = setTimeout(() => {
+        controller?.abort();
+      }, 15000);
+
+      const response = await fetch("/api/auth/sign-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (controller.signal.aborted) {
+          throw new Error("Login timed out. Check internet or Supabase keys.");
+        }
+        setError(payload.error ?? "Login failed. Please try again.");
+        return;
+      }
+
+      const returnTo = searchParams.get("returnTo") || "/staff/journals";
+      router.replace(returnTo);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Login failed. Please try again.";
+      setError(message);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      controller = null;
       setIsLoading(false);
-      return;
     }
-
-    const returnTo = searchParams.get("returnTo") || "/staff/journals";
-    router.replace(returnTo);
   };
 
   return (

@@ -16,7 +16,16 @@ export type CompanySummary = {
 
 export const getActiveCompanyId = async () => {
   const cookieStore = await cookies();
-  return cookieStore.get("activeCompanyId")?.value ?? null;
+  const activeCompanyId = cookieStore.get("activeCompanyId")?.value ?? null;
+  if (!activeCompanyId) {
+    return null;
+  }
+  const { data: company } = await supabaseAdmin()
+    .from("companies")
+    .select("id")
+    .eq("id", activeCompanyId)
+    .maybeSingle();
+  return company ? activeCompanyId : null;
 };
 
 export const ensureActiveCompanyId = async (userId: string, nextPath: string) => {
@@ -41,6 +50,9 @@ export const getAuthenticatedUser = async () => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
   if (error) {
+    if (error.code === "refresh_token_not_found") {
+      redirect("/api/auth/clear?next=/login");
+    }
     return null;
   }
   return data.user ?? null;

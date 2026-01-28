@@ -16,31 +16,43 @@ export default function CompanySwitcher() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     async function load() {
       setLoading(true);
 
-      const res = await fetch("/api/me/companies", { cache: "no-store" });
-      const data = await res.json();
-      const list: Company[] = data?.companies ?? [];
+      try {
+        const res = await fetch("/api/me/companies", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        const list: Company[] = data?.companies ?? [];
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      setCompanies(list);
+        setCompanies(list);
 
-      const stored = localStorage.getItem("activeCompanyId");
-      const validStored = stored && list.some((c) => c.id === stored) ? stored : null;
-      const nextActive = validStored ?? (list[0]?.id ?? null);
+        const stored = localStorage.getItem("activeCompanyId");
+        const validStored = stored && list.some((c) => c.id === stored) ? stored : null;
+        const nextActive = validStored ?? (list[0]?.id ?? null);
 
-      setActiveId(nextActive);
-      if (nextActive) localStorage.setItem("activeCompanyId", nextActive);
+        setActiveId(nextActive);
+        if (nextActive) localStorage.setItem("activeCompanyId", nextActive);
 
-      setLoading(false);
+        setLoading(false);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
+        setLoading(false);
+      }
     }
 
     load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 

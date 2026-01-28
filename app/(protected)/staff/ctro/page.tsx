@@ -2,13 +2,10 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import CtroLinesForm from "@/components/ctro-lines-form";
+import CtroCreateForm from "@/components/ctro-create-form";
 import ToastMessage from "@/components/toast-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createCtroDraft, deleteCtroDraft, postCtro, submitCtro } from "@/lib/actions/ctro";
 import {
@@ -108,6 +105,42 @@ export default async function CtroPage({
     throw new Error(glError.message);
   }
 
+  const { data: regions, error: regionError } = await supabaseAdmin()
+    .from("cocoa_regions")
+    .select("id, name")
+    .order("name");
+
+  if (regionError) {
+    throw new Error(regionError.message);
+  }
+
+  const { data: districts, error: districtError } = await supabaseAdmin()
+    .from("cocoa_districts")
+    .select("id, name, region_id")
+    .order("name");
+
+  if (districtError) {
+    throw new Error(districtError.message);
+  }
+
+  const { data: depots, error: depotError } = await supabaseAdmin()
+    .from("cocoa_depots")
+    .select("id, name, district_id")
+    .order("name");
+
+  if (depotError) {
+    throw new Error(depotError.message);
+  }
+
+  const { data: centers, error: centerError } = await supabaseAdmin()
+    .from("takeover_centers")
+    .select("id, name")
+    .order("name");
+
+  if (centerError) {
+    throw new Error(centerError.message);
+  }
+
   const { data: ctroHeaders, error: ctroError } = await supabaseAdmin()
     .from("ctro_headers")
     .select(
@@ -163,8 +196,19 @@ export default async function CtroPage({
           cwc: line.cwc,
           purity_cert_no: line.purity_cert_no,
           line_date: line.line_date,
+          region_id: line.region_id,
+          district_id: line.district_id,
+          depot_id: line.depot_id || null,
+          takeover_center_id: line.takeover_center_id,
+          bag_weight_kg: Number(line.bag_weight_kg) || 64,
           bags: Number(line.bags) || 0,
           tonnage: Number(line.tonnage) || 0,
+          applied_producer_price_per_tonne: Number(line.applied_producer_price_per_tonne) || 0,
+          applied_buyer_margin_per_tonne: Number(line.applied_buyer_margin_per_tonne) || 0,
+          applied_secondary_evac_cost_per_tonne:
+            Number(line.applied_secondary_evac_cost_per_tonne) || 0,
+          applied_takeover_price_per_tonne:
+            Number(line.applied_takeover_price_per_tonne) || 0,
           evacuation_cost: Number(line.evacuation_cost) || 0,
           evacuation_treatment: (line.evacuation_treatment as "company_paid" | "deducted") ?? "company_paid",
           producer_price_value: Number(line.producer_price_value) || 0,
@@ -283,69 +327,16 @@ export default async function CtroPage({
               You do not have permission to create CTROs.
             </p>
           ) : (
-            <form action={createAction} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Season</Label>
-                  <Input name="season" placeholder="2025/2026" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date</Label>
-                  <Input name="ctro_date" type="date" required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Period</Label>
-                  <Select name="period_id" required>
-                    <option value="">Select period</option>
-                    {(periods ?? []).map((period) => (
-                      <option key={period.id} value={period.id}>
-                        {period.period_year}-{String(period.period_month).padStart(2, "0")}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Region</Label>
-                  <Input name="region" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Agent</Label>
-                  <Select name="agent_id">
-                    <option value="">Select agent</option>
-                    {(agents ?? []).map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Remarks</Label>
-                  <Input name="remarks" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Evacuation paid via</Label>
-                  <Select name="evacuation_payment_mode">
-                    <option value="payable">Evacuation Payable</option>
-                    <option value="cash">Cash/Bank</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Cash/Bank account</Label>
-                  <Select name="evacuation_cash_account_id">
-                    <option value="">Select account</option>
-                    {(accounts ?? []).map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.code} - {account.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-
-              <CtroLinesForm />
-              <Button type="submit">Save draft</Button>
-            </form>
+            <CtroCreateForm
+              action={createAction}
+              periods={periods ?? []}
+              agents={agents ?? []}
+              accounts={accounts ?? []}
+              regions={regions ?? []}
+              districts={districts ?? []}
+              depots={depots ?? []}
+              centers={centers ?? []}
+            />
           )}
         </CardContent>
       </Card>

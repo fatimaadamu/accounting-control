@@ -7,7 +7,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 
+type Option = { id: string; name: string };
+
+type DistrictOption = Option & { region_id: string };
+
+type DepotOption = Option & { district_id: string };
+
+type RateCardLine = {
+  region_id: string;
+  district_id: string;
+  depot_id: string | null;
+  takeover_center_id: string;
+  producer_price_per_tonne: number;
+  buyer_margin_per_tonne: number;
+  secondary_evac_cost_per_tonne: number;
+  takeover_price_per_tonne?: number | null;
+};
+
 type CtroLine = {
+  region_id: string;
+  district_id: string;
+  depot_id: string;
+  takeover_center_id: string;
   district: string;
   tod_time: string;
   waybill_no: string;
@@ -16,18 +37,38 @@ type CtroLine = {
   purity_cert_no: string;
   line_date: string;
   bags: string;
+  bag_weight_kg: string;
   tonnage: string;
-  evacuation_cost: string;
-  evacuation_treatment: "company_paid" | "deducted";
+  applied_producer_price_per_tonne: string;
+  applied_buyer_margin_per_tonne: string;
+  applied_secondary_evac_cost_per_tonne: string;
+  applied_takeover_price_per_tonne: string;
   producer_price_value: string;
   buyers_margin_value: string;
+  evacuation_cost: string;
+  line_total: string;
+  evacuation_treatment: "company_paid" | "deducted";
 };
 
 type CtroLinesFormProps = {
   fieldName?: string;
+  regions: Option[];
+  districts: DistrictOption[];
+  depots: DepotOption[];
+  centers: Option[];
+  bagWeightKg: number;
+  rateCardLines: RateCardLine[];
+  rateCardStatus: "ready" | "missing" | "loading";
 };
 
-const emptyLine = (): CtroLine => ({
+const round2 = (value: number) => Math.round(value * 100) / 100;
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
+
+const emptyLine = (bagWeightKg: number): CtroLine => ({
+  region_id: "",
+  district_id: "",
+  depot_id: "",
+  takeover_center_id: "",
   district: "",
   tod_time: "",
   waybill_no: "",
@@ -36,27 +77,139 @@ const emptyLine = (): CtroLine => ({
   purity_cert_no: "",
   line_date: "",
   bags: "",
+  bag_weight_kg: bagWeightKg.toString(),
   tonnage: "",
-  evacuation_cost: "",
-  evacuation_treatment: "company_paid",
+  applied_producer_price_per_tonne: "",
+  applied_buyer_margin_per_tonne: "",
+  applied_secondary_evac_cost_per_tonne: "",
+  applied_takeover_price_per_tonne: "",
   producer_price_value: "",
   buyers_margin_value: "",
+  evacuation_cost: "",
+  line_total: "",
+  evacuation_treatment: "company_paid",
 });
 
-const round2 = (value: number) => Math.round(value * 100) / 100;
+const formatNumber = (value: number, decimals = 2) => {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  return value.toFixed(decimals);
+};
 
-export default function CtroLinesForm({ fieldName = "lines_json" }: CtroLinesFormProps) {
-  const [lines, setLines] = React.useState<CtroLine[]>([emptyLine()]);
+export default function CtroLinesForm({
+  fieldName = "lines_json",
+  regions,
+  districts,
+  depots,
+  centers,
+  bagWeightKg,
+  rateCardLines,
+  rateCardStatus,
+}: CtroLinesFormProps) {
+  const [lines, setLines] = React.useState<CtroLine[]>([emptyLine(bagWeightKg)]);
+
+  const resolveDistrictName = React.useCallback(
+    (districtId: string) => districts.find((item) => item.id === districtId)?.name ?? "",
+    [districts]
+  );
+
+  const findRateCardLine = React.useCallback(
+    (line: CtroLine) => {
+      if (!line.region_id || !line.district_id || !line.takeover_center_id) {
+        return null;
+      }
+
+      const depotId = line.depot_id || null;
+      const exact = rateCardLines.find(
+        (item) =>
+          item.region_id === line.region_id &&
+          item.district_id === line.district_id &&
+          (item.depot_id ?? null) === depotId &&
+          item.takeover_center_id === line.takeover_center_id
+      );
+
+      if (exact) {
+        return exact;
+      }
+
+      if (depotId) {
+        return (
+          rateCardLines.find(
+            (item) =>
+              item.region_id === line.region_id &&
+              item.district_id === line.district_id &&
+              item.depot_id == null &&
+              item.takeover_center_id === line.takeover_center_id
+          ) ?? null
+        );
+      }
+
+      return null;
+    },
+    [rateCardLines]
+  );
+
+  const recalcLine = React.useCallback(
+    (line: CtroLine) => {
+      const bags = Number(line.bags || 0);
+      const tonnage = round3((bags * bagWeightKg) / 1000);
+
+      const rateLine = findRateCardLine(line);
+      const producerRate = rateLine?.producer_price_per_tonne ?? 0;
+      const marginRate = rateLine?.buyer_margin_per_tonne ?? 0;
+      const evacRate = rateLine?.secondary_evac_cost_per_tonne ?? 0;
+      const takeoverRate =
+        rateLine?.takeover_price_per_tonne ?? round2(producerRate + marginRate + evacRate);
+
+      const producerValue = round2(tonnage * producerRate);
+      const marginValue = round2(tonnage * marginRate);
+      const evacuationValue = round2(tonnage * evacRate);
+      const lineTotal = round2(tonnage * takeoverRate);
+
+      return {
+        ...line,
+        bag_weight_kg: bagWeightKg.toString(),
+        tonnage: formatNumber(tonnage, 3),
+        applied_producer_price_per_tonne: formatNumber(producerRate, 2),
+        applied_buyer_margin_per_tonne: formatNumber(marginRate, 2),
+        applied_secondary_evac_cost_per_tonne: formatNumber(evacRate, 2),
+        applied_takeover_price_per_tonne: formatNumber(takeoverRate, 2),
+        producer_price_value: formatNumber(producerValue, 2),
+        buyers_margin_value: formatNumber(marginValue, 2),
+        evacuation_cost: formatNumber(evacuationValue, 2),
+        line_total: formatNumber(lineTotal, 2),
+      };
+    },
+    [bagWeightKg, findRateCardLine]
+  );
 
   const updateLine = (index: number, update: Partial<CtroLine>) => {
     setLines((prev) =>
-      prev.map((line, idx) => (idx === index ? { ...line, ...update } : line))
+      prev.map((line, idx) => {
+        if (idx !== index) {
+          return line;
+        }
+        const next = { ...line, ...update };
+        if (update.district_id !== undefined) {
+          next.district = resolveDistrictName(update.district_id);
+        }
+        return recalcLine(next);
+      })
     );
+  };
+
+  const addLine = () => {
+    setLines((prev) => [...prev, recalcLine(emptyLine(bagWeightKg))]);
   };
 
   const removeLine = (index: number) => {
     setLines((prev) => prev.filter((_, idx) => idx !== index));
   };
+
+  React.useEffect(() => {
+    setLines((prev) => prev.map((line) => recalcLine(line)));
+  }, [bagWeightKg, rateCardLines, recalcLine]);
 
   const totals = lines.reduce(
     (acc, line) => {
@@ -65,7 +218,7 @@ export default function CtroLinesForm({ fieldName = "lines_json" }: CtroLinesFor
       const evacuation = Number(line.evacuation_cost) || 0;
       const producer = Number(line.producer_price_value) || 0;
       const margin = Number(line.buyers_margin_value) || 0;
-      const lineTotal = round2(evacuation + producer + margin);
+      const lineTotal = round2(Number(line.line_total) || 0);
       acc.total_bags += bags;
       acc.total_tonnage += tonnage;
       acc.total_evacuation += evacuation;
@@ -90,10 +243,22 @@ export default function CtroLinesForm({ fieldName = "lines_json" }: CtroLinesFor
 
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-700">CTRO Lines</h3>
-        <Button type="button" variant="secondary" onClick={() => setLines((prev) => [...prev, emptyLine()])}>
+        <Button type="button" variant="secondary" onClick={addLine}>
           Add line
         </Button>
       </div>
+
+      {rateCardStatus === "loading" && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Loading rate card...
+        </div>
+      )}
+
+      {rateCardStatus === "missing" && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          No rate card found for this date. Please add a rate card in Admin.
+        </div>
+      )}
 
       <div className="grid gap-3 rounded-md border border-zinc-200 bg-white p-3 text-sm text-zinc-600 md:grid-cols-3">
         <div>
@@ -124,18 +289,84 @@ export default function CtroLinesForm({ fieldName = "lines_json" }: CtroLinesFor
 
       <div className="space-y-3">
         {lines.map((line, index) => {
-          const lineTotal = round2(
-            (Number(line.evacuation_cost) || 0) +
-              (Number(line.producer_price_value) || 0) +
-              (Number(line.buyers_margin_value) || 0)
+          const availableDistricts = districts.filter(
+            (district) => district.region_id === line.region_id
+          );
+          const availableDepots = depots.filter(
+            (depot) => depot.district_id === line.district_id
           );
 
           return (
             <div key={`ctro-line-${index}`} className="rounded-md border border-zinc-200 p-4">
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="space-y-1">
+                  <Label>Region</Label>
+                  <Select
+                    value={line.region_id}
+                    onChange={(event) =>
+                      updateLine(index, {
+                        region_id: event.target.value,
+                        district_id: "",
+                        depot_id: "",
+                        takeover_center_id: "",
+                        district: "",
+                      })
+                    }
+                  >
+                    <option value="">Select region</option>
+                    {regions.map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1">
                   <Label>District</Label>
-                  <Input value={line.district} onChange={(event) => updateLine(index, { district: event.target.value })} />
+                  <Select
+                    value={line.district_id}
+                    onChange={(event) =>
+                      updateLine(index, {
+                        district_id: event.target.value,
+                        depot_id: "",
+                      })
+                    }
+                  >
+                    <option value="">Select district</option>
+                    {availableDistricts.map((district) => (
+                      <option key={district.id} value={district.id}>
+                        {district.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Depot (optional)</Label>
+                  <Select
+                    value={line.depot_id}
+                    onChange={(event) => updateLine(index, { depot_id: event.target.value })}
+                  >
+                    <option value="">Select depot</option>
+                    {availableDepots.map((depot) => (
+                      <option key={depot.id} value={depot.id}>
+                        {depot.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Takeover Center</Label>
+                  <Select
+                    value={line.takeover_center_id}
+                    onChange={(event) => updateLine(index, { takeover_center_id: event.target.value })}
+                  >
+                    <option value="">Select center</option>
+                    {centers.map((center) => (
+                      <option key={center.id} value={center.id}>
+                        {center.name}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <Label>TOD/Time</Label>
@@ -167,11 +398,31 @@ export default function CtroLinesForm({ fieldName = "lines_json" }: CtroLinesFor
                 </div>
                 <div className="space-y-1">
                   <Label>Tonnage</Label>
-                  <Input inputMode="decimal" value={line.tonnage} onChange={(event) => updateLine(index, { tonnage: event.target.value })} />
+                  <Input value={line.tonnage} readOnly />
                 </div>
                 <div className="space-y-1">
-                  <Label>Evacuation Cost</Label>
-                  <Input inputMode="decimal" value={line.evacuation_cost} onChange={(event) => updateLine(index, { evacuation_cost: event.target.value })} />
+                  <Label>Evacuation / tonne</Label>
+                  <Input value={line.applied_secondary_evac_cost_per_tonne} readOnly />
+                </div>
+                <div className="space-y-1">
+                  <Label>Producer / tonne</Label>
+                  <Input value={line.applied_producer_price_per_tonne} readOnly />
+                </div>
+                <div className="space-y-1">
+                  <Label>Margin / tonne</Label>
+                  <Input value={line.applied_buyer_margin_per_tonne} readOnly />
+                </div>
+                <div className="space-y-1">
+                  <Label>Evacuation Value</Label>
+                  <Input value={line.evacuation_cost} readOnly />
+                </div>
+                <div className="space-y-1">
+                  <Label>Producer Value</Label>
+                  <Input value={line.producer_price_value} readOnly />
+                </div>
+                <div className="space-y-1">
+                  <Label>Buyers Margin Value</Label>
+                  <Input value={line.buyers_margin_value} readOnly />
                 </div>
                 <div className="space-y-1">
                   <Label>Evacuation Treatment</Label>
@@ -186,16 +437,8 @@ export default function CtroLinesForm({ fieldName = "lines_json" }: CtroLinesFor
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Producer Price</Label>
-                  <Input inputMode="decimal" value={line.producer_price_value} onChange={(event) => updateLine(index, { producer_price_value: event.target.value })} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Buyers Margin</Label>
-                  <Input inputMode="decimal" value={line.buyers_margin_value} onChange={(event) => updateLine(index, { buyers_margin_value: event.target.value })} />
-                </div>
-                <div className="space-y-1">
                   <Label>Line Total</Label>
-                  <Input value={lineTotal.toFixed(2)} readOnly />
+                  <Input value={line.line_total} readOnly />
                 </div>
               </div>
               {lines.length > 1 && (
