@@ -15,6 +15,7 @@ import {
 } from "@/lib/auth";
 import { canAnyRole } from "@/lib/permissions";
 import { getCtroById } from "@/lib/data/ctro";
+import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 
 export default async function CtroDetailPage({
   params,
@@ -187,12 +188,12 @@ export default async function CtroDetailPage({
                     </TableCell>
                     <TableCell>{line.waybill_no ?? "-"}</TableCell>
                     <TableCell>{line.ctro_ref_no ?? "-"}</TableCell>
-                    <TableCell>{line.bags ?? 0}</TableCell>
-                    <TableCell>{Number(line.tonnage ?? 0).toFixed(3)}</TableCell>
-                    <TableCell>{Number(line.evacuation_cost ?? 0).toFixed(2)}</TableCell>
-                    <TableCell>{Number(line.producer_price_value ?? 0).toFixed(2)}</TableCell>
-                    <TableCell>{Number(line.buyers_margin_value ?? 0).toFixed(2)}</TableCell>
-                    <TableCell>{Number(line.line_total ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>{formatBags(Number(line.bags ?? 0))}</TableCell>
+                    <TableCell>{formatTonnage(Number(line.tonnage ?? 0))}</TableCell>
+                    <TableCell>{formatMoney(Number(line.evacuation_cost ?? 0))}</TableCell>
+                    <TableCell>{formatMoney(Number(line.producer_price_value ?? 0))}</TableCell>
+                    <TableCell>{formatMoney(Number(line.buyers_margin_value ?? 0))}</TableCell>
+                    <TableCell>{formatMoney(Number(line.line_total ?? 0))}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -206,12 +207,12 @@ export default async function CtroDetailPage({
           <CardTitle>Totals</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm text-zinc-600 md:grid-cols-3">
-          <div>Bags: {totals?.total_bags ?? 0}</div>
-          <div>Tonnage: {Number(totals?.total_tonnage ?? 0).toFixed(3)}</div>
-          <div>Evacuation: {Number(totals?.total_evacuation ?? 0).toFixed(2)}</div>
-          <div>Producer price: {Number(totals?.total_producer_price ?? 0).toFixed(2)}</div>
-          <div>Buyers margin: {Number(totals?.total_buyers_margin ?? 0).toFixed(2)}</div>
-          <div>Grand total: {Number(totals?.grand_total ?? 0).toFixed(2)}</div>
+          <div>Bags: {formatBags(Number(totals?.total_bags ?? 0))}</div>
+          <div>Tonnage: {formatTonnage(Number(totals?.total_tonnage ?? 0))}</div>
+          <div>Evacuation: {formatMoney(Number(totals?.total_evacuation ?? 0))}</div>
+          <div>Producer price: {formatMoney(Number(totals?.total_producer_price ?? 0))}</div>
+          <div>Buyers margin: {formatMoney(Number(totals?.total_buyers_margin ?? 0))}</div>
+          <div>Grand total: {formatMoney(Number(totals?.grand_total ?? 0))}</div>
         </CardContent>
       </Card>
 

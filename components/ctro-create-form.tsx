@@ -9,11 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 
 type Option = { id: string; name: string };
-type DepotOption = Option & { region_id: string };
+type DepotOption = Option;
 
 type RateCardLine = {
-  region_id: string;
-  district_id: string;
   depot_id: string | null;
   takeover_center_id: string;
   producer_price_per_tonne: number;
@@ -23,26 +21,27 @@ type RateCardLine = {
 };
 
 type RateCardResponse = {
-  rateCard: { id: string; bag_weight_kg: number } | null;
+  rateCard: { id: string; bag_weight_kg: number; bags_per_tonne?: number | null; season: string | null } | null;
   lines: RateCardLine[];
+  message?: string | null;
 };
 
 type CtroCreateFormProps = {
   action: (formData: FormData) => void;
-  periods: Array<{ id: string; period_month: number; period_year: number }>;
-  agents: Array<{ id: string; name: string }>;
-  accounts: Array<{ id: string; code: string; name: string }>;
-  regions: Option[];
-  depots: DepotOption[];
+  periods: Array<{
+    id: string;
+    period_month: number;
+    period_year: number;
+    start_date: string;
+    end_date: string;
+  }>;
+  depots: Option[];
   centers: Option[];
 };
 
 export default function CtroCreateForm({
   action,
   periods,
-  agents,
-  accounts,
-  regions,
   depots,
   centers,
 }: CtroCreateFormProps) {
@@ -51,6 +50,8 @@ export default function CtroCreateForm({
   const [rateCardStatus, setRateCardStatus] = React.useState<
     "ready" | "missing" | "loading"
   >("missing");
+  const [rateCardMessage, setRateCardMessage] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -58,9 +59,11 @@ export default function CtroCreateForm({
       if (!ctroDate) {
         setRateCard(null);
         setRateCardStatus("missing");
+        setRateCardMessage(null);
         return;
       }
       setRateCardStatus("loading");
+      setRateCardMessage(null);
       try {
         const response = await fetch(`/api/cocoa/rate-card?date=${ctroDate}`, {
           signal: controller.signal,
@@ -68,12 +71,14 @@ export default function CtroCreateForm({
         if (!response.ok) {
           setRateCard(null);
           setRateCardStatus("missing");
+          setRateCardMessage("No rate card found for this date.");
           return;
         }
         const data = (await response.json()) as RateCardResponse;
         if (!data.rateCard) {
           setRateCard(null);
           setRateCardStatus("missing");
+          setRateCardMessage(data.message ?? "No rate card found for this date.");
           return;
         }
         setRateCard(data);
@@ -84,6 +89,7 @@ export default function CtroCreateForm({
         }
         setRateCard(null);
         setRateCardStatus("missing");
+        setRateCardMessage("Unable to load rate card.");
       }
     };
     loadRateCard();
@@ -92,7 +98,27 @@ export default function CtroCreateForm({
     };
   }, [ctroDate]);
 
-  const bagWeightKg = rateCard?.rateCard?.bag_weight_kg ?? 64;
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const bagsPerTonne = rateCard?.rateCard?.bags_per_tonne ?? 16;
+  const season = rateCard?.rateCard?.season ?? "";
+  const canSubmit = Boolean(ctroDate) && rateCardStatus === "ready";
+  const submitDisabled = mounted ? !canSubmit : undefined;
+  const period = React.useMemo(() => {
+    if (!ctroDate) {
+      return null;
+    }
+    const dateValue = new Date(ctroDate);
+    return (
+      periods.find((item) => {
+        const start = new Date(item.start_date);
+        const end = new Date(item.end_date);
+        return dateValue >= start && dateValue <= end;
+      }) ?? null
+    );
+  }, [ctroDate, periods]);
 
   return (
     <form action={action} className="space-y-4">
@@ -109,69 +135,39 @@ export default function CtroCreateForm({
         </div>
         <div className="space-y-2">
           <Label>Season</Label>
-          <Input name="season" placeholder="2025/2026" />
+          <Input name="season" value={season} readOnly />
         </div>
         <div className="space-y-2">
           <Label>Period</Label>
-          <Select name="period_id" required>
-            <option value="">Select period</option>
-            {periods.map((period) => (
-              <option key={period.id} value={period.id}>
-                {period.period_year}-{String(period.period_month).padStart(2, "0")}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Region (header)</Label>
-          <Input name="region" />
-        </div>
-        <div className="space-y-2">
-          <Label>Agent</Label>
-          <Select name="agent_id">
-            <option value="">Select agent</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </Select>
+          <Input
+            value={
+              period
+                ? `${period.period_year}-${String(period.period_month).padStart(2, "0")}`
+                : ""
+            }
+            readOnly
+          />
+          <input type="hidden" name="period_id" value={period?.id ?? ""} />
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label>Remarks</Label>
           <Input name="remarks" />
         </div>
-        <div className="space-y-2">
-          <Label>Evacuation paid via</Label>
-          <Select name="evacuation_payment_mode">
-            <option value="payable">Evacuation Payable</option>
-            <option value="cash">Cash/Bank</option>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Cash/Bank account</Label>
-          <Select name="evacuation_cash_account_id">
-            <option value="">Select account</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} - {account.name}
-              </option>
-            ))}
-          </Select>
-        </div>
       </div>
 
       <CtroLinesForm
-        regions={regions}
         depots={depots}
         centers={centers}
-        bagWeightKg={bagWeightKg}
+        bagsPerTonne={bagsPerTonne}
         rateCardLines={rateCard?.lines ?? []}
         rateCardStatus={rateCardStatus}
+        missingMessage={rateCardMessage}
         headerDate={ctroDate}
       />
 
-      <Button type="submit">Save draft</Button>
+      <Button type="submit" disabled={submitDisabled}>
+        Save draft
+      </Button>
     </form>
   );
 }

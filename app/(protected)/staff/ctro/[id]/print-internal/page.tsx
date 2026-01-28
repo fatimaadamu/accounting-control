@@ -1,5 +1,6 @@
 import PrintButton from "@/components/print-button";
 import { getCtroById } from "@/lib/data/ctro";
+import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 
 export default async function CtroPrintInternalPage({
   params,
@@ -60,24 +61,24 @@ export default async function CtroPrintInternalPage({
               <td className="border border-zinc-200 px-2 py-1">{line.cwc ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{line.purity_cert_no ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{line.line_date ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{line.bags ?? 0}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{Number(line.tonnage ?? 0).toFixed(3)}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{Number(line.evacuation_cost ?? 0).toFixed(2)}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{Number(line.producer_price_value ?? 0).toFixed(2)}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{Number(line.buyers_margin_value ?? 0).toFixed(2)}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{Number(line.line_total ?? 0).toFixed(2)}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">{formatBags(Number(line.bags ?? 0))}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">{formatTonnage(Number(line.tonnage ?? 0))}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">{formatMoney(Number(line.evacuation_cost ?? 0))}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">{formatMoney(Number(line.producer_price_value ?? 0))}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">{formatMoney(Number(line.buyers_margin_value ?? 0))}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">{formatMoney(Number(line.line_total ?? 0))}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
       <div className="grid gap-2 md:grid-cols-3">
-        <div>Total Bags: {totals?.total_bags ?? 0}</div>
-        <div>Total Tonnage: {Number(totals?.total_tonnage ?? 0).toFixed(3)}</div>
-        <div>Total Evacuation: {Number(totals?.total_evacuation ?? 0).toFixed(2)}</div>
-        <div>Total Producer Price: {Number(totals?.total_producer_price ?? 0).toFixed(2)}</div>
-        <div>Total Buyers Margin: {Number(totals?.total_buyers_margin ?? 0).toFixed(2)}</div>
-        <div>Grand Total: {Number(totals?.grand_total ?? 0).toFixed(2)}</div>
+        <div>Total Bags: {formatBags(Number(totals?.total_bags ?? 0))}</div>
+        <div>Total Tonnage: {formatTonnage(Number(totals?.total_tonnage ?? 0))}</div>
+        <div>Total Evacuation: {formatMoney(Number(totals?.total_evacuation ?? 0))}</div>
+        <div>Total Producer Price: {formatMoney(Number(totals?.total_producer_price ?? 0))}</div>
+        <div>Total Buyers Margin: {formatMoney(Number(totals?.total_buyers_margin ?? 0))}</div>
+        <div>Grand Total: {formatMoney(Number(totals?.grand_total ?? 0))}</div>
       </div>
     </div>
   );

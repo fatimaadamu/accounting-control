@@ -82,3 +82,30 @@ export const upsertCtroAccounts = async (payload: {
     throw new Error(error.message);
   }
 };
+
+export const upsertCocoaAccountConfig = async (payload: {
+  company_id: string;
+  stock_field_account_id?: string | null;
+  stock_evac_account_id?: string | null;
+  stock_margin_account_id?: string | null;
+  advances_account_id?: string | null;
+  buyer_margin_income_account_id?: string | null;
+  evacuation_payable_account_id?: string | null;
+}) => {
+  const user = await requireUser();
+  await requireCompanyRole(user.id, payload.company_id, ["Admin"]);
+
+  const { error } = await supabaseAdmin().from("cocoa_account_config").upsert({
+    company_id: payload.company_id,
+    stock_field_account_id: payload.stock_field_account_id ?? null,
+    stock_evac_account_id: payload.stock_evac_account_id ?? null,
+    stock_margin_account_id: payload.stock_margin_account_id ?? null,
+    advances_account_id: payload.advances_account_id ?? null,
+    buyer_margin_income_account_id: payload.buyer_margin_income_account_id ?? null,
+    evacuation_payable_account_id: payload.evacuation_payable_account_id ?? null,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+};

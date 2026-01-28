@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { upsertCtroAccounts } from "@/lib/actions/ctro-admin";
+import { upsertCocoaAccountConfig } from "@/lib/actions/ctro-admin";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -223,33 +223,33 @@ export default async function AdminSetupPage({
     throw new Error(accountsError.message);
   }
 
-  let ctroAccountsAvailable = true;
-  let ctroAccounts:
+  let cocoaAccountsAvailable = true;
+  let cocoaAccountConfig:
     | {
-        cocoa_stock_field_account_id: string | null;
-        cocoa_stock_evacuation_account_id: string | null;
-        cocoa_stock_margin_account_id: string | null;
-        advances_to_agents_account_id: string | null;
-        buyers_margin_income_account_id: string | null;
+        stock_field_account_id: string | null;
+        stock_evac_account_id: string | null;
+        stock_margin_account_id: string | null;
+        advances_account_id: string | null;
+        buyer_margin_income_account_id: string | null;
         evacuation_payable_account_id: string | null;
       }
     | null = null;
-  const { data: ctroAccountsData, error: ctroAccountsError } = await supabaseAdmin()
-    .from("ctro_accounts")
+  const { data: cocoaConfigData, error: cocoaConfigError } = await supabaseAdmin()
+    .from("cocoa_account_config")
     .select(
-      "cocoa_stock_field_account_id, cocoa_stock_evacuation_account_id, cocoa_stock_margin_account_id, advances_to_agents_account_id, buyers_margin_income_account_id, evacuation_payable_account_id"
+      "stock_field_account_id, stock_evac_account_id, stock_margin_account_id, advances_account_id, buyer_margin_income_account_id, evacuation_payable_account_id"
     )
     .eq("company_id", activeCompanyId)
     .maybeSingle();
 
-  if (ctroAccountsError) {
-    if (ctroAccountsError.message.includes("Could not find the table")) {
-      ctroAccountsAvailable = false;
+  if (cocoaConfigError) {
+    if (cocoaConfigError.message.includes("Could not find the table")) {
+      cocoaAccountsAvailable = false;
     } else {
-      throw new Error(ctroAccountsError.message);
+      throw new Error(cocoaConfigError.message);
     }
   } else {
-    ctroAccounts = ctroAccountsData ?? null;
+    cocoaAccountConfig = cocoaConfigData ?? null;
   }
 
   async function createFiscalYearAction() {
@@ -410,22 +410,22 @@ export default async function AdminSetupPage({
     );
   }
 
-  async function ctroAccountsAction(formData: FormData) {
+  async function cocoaAccountsAction(formData: FormData) {
     "use server";
-    const cocoaField = String(formData.get("cocoa_stock_field_account_id") ?? "");
-    const cocoaEvac = String(formData.get("cocoa_stock_evacuation_account_id") ?? "");
-    const cocoaMargin = String(formData.get("cocoa_stock_margin_account_id") ?? "");
-    const advances = String(formData.get("advances_to_agents_account_id") ?? "");
-    const marginIncome = String(formData.get("buyers_margin_income_account_id") ?? "");
+    const cocoaField = String(formData.get("stock_field_account_id") ?? "");
+    const cocoaEvac = String(formData.get("stock_evac_account_id") ?? "");
+    const cocoaMargin = String(formData.get("stock_margin_account_id") ?? "");
+    const advances = String(formData.get("advances_account_id") ?? "");
+    const marginIncome = String(formData.get("buyer_margin_income_account_id") ?? "");
     const evacPayable = String(formData.get("evacuation_payable_account_id") ?? "");
 
-    await upsertCtroAccounts({
+    await upsertCocoaAccountConfig({
       company_id: activeCompanyId,
-      cocoa_stock_field_account_id: cocoaField || null,
-      cocoa_stock_evacuation_account_id: cocoaEvac || null,
-      cocoa_stock_margin_account_id: cocoaMargin || null,
-      advances_to_agents_account_id: advances || null,
-      buyers_margin_income_account_id: marginIncome || null,
+      stock_field_account_id: cocoaField || null,
+      stock_evac_account_id: cocoaEvac || null,
+      stock_margin_account_id: cocoaMargin || null,
+      advances_account_id: advances || null,
+      buyer_margin_income_account_id: marginIncome || null,
       evacuation_payable_account_id: evacPayable || null,
     });
 
@@ -472,20 +472,20 @@ export default async function AdminSetupPage({
         </CardContent>
       </Card>
 
-      {ctroAccountsAvailable ? (
+      {cocoaAccountsAvailable ? (
         <Card>
           <CardHeader>
-            <CardTitle>CTRO account mapping</CardTitle>
+            <CardTitle>Cocoa Accounts</CardTitle>
             <CardDescription>Configure cocoa accounts for CTRO posting.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={ctroAccountsAction} className="grid gap-4 md:grid-cols-2">
+            <form action={cocoaAccountsAction} className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="cocoa_stock_field_account_id">Cocoa Stock – Field</Label>
+                <Label htmlFor="stock_field_account_id">Cocoa Stock - Field</Label>
                 <Select
-                  id="cocoa_stock_field_account_id"
-                  name="cocoa_stock_field_account_id"
-                  defaultValue={ctroAccounts?.cocoa_stock_field_account_id ?? ""}
+                  id="stock_field_account_id"
+                  name="stock_field_account_id"
+                  defaultValue={cocoaAccountConfig?.stock_field_account_id ?? ""}
                 >
                   <option value="">Select account</option>
                   {(accounts ?? []).map((account) => (
@@ -496,11 +496,11 @@ export default async function AdminSetupPage({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cocoa_stock_evacuation_account_id">Cocoa Stock – Evacuation</Label>
+                <Label htmlFor="stock_evac_account_id">Cocoa Stock - Evacuation</Label>
                 <Select
-                  id="cocoa_stock_evacuation_account_id"
-                  name="cocoa_stock_evacuation_account_id"
-                  defaultValue={ctroAccounts?.cocoa_stock_evacuation_account_id ?? ""}
+                  id="stock_evac_account_id"
+                  name="stock_evac_account_id"
+                  defaultValue={cocoaAccountConfig?.stock_evac_account_id ?? ""}
                 >
                   <option value="">Select account</option>
                   {(accounts ?? []).map((account) => (
@@ -511,11 +511,11 @@ export default async function AdminSetupPage({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cocoa_stock_margin_account_id">Cocoa Stock – Margin</Label>
+                <Label htmlFor="stock_margin_account_id">Cocoa Stock - Margin</Label>
                 <Select
-                  id="cocoa_stock_margin_account_id"
-                  name="cocoa_stock_margin_account_id"
-                  defaultValue={ctroAccounts?.cocoa_stock_margin_account_id ?? ""}
+                  id="stock_margin_account_id"
+                  name="stock_margin_account_id"
+                  defaultValue={cocoaAccountConfig?.stock_margin_account_id ?? ""}
                 >
                   <option value="">Select account</option>
                   {(accounts ?? []).map((account) => (
@@ -526,11 +526,11 @@ export default async function AdminSetupPage({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="advances_to_agents_account_id">Advances to Agents</Label>
+                <Label htmlFor="advances_account_id">Advances to Agents</Label>
                 <Select
-                  id="advances_to_agents_account_id"
-                  name="advances_to_agents_account_id"
-                  defaultValue={ctroAccounts?.advances_to_agents_account_id ?? ""}
+                  id="advances_account_id"
+                  name="advances_account_id"
+                  defaultValue={cocoaAccountConfig?.advances_account_id ?? ""}
                 >
                   <option value="">Select account</option>
                   {(accounts ?? []).map((account) => (
@@ -541,11 +541,11 @@ export default async function AdminSetupPage({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="buyers_margin_income_account_id">Buyers Margin Income</Label>
+                <Label htmlFor="buyer_margin_income_account_id">Buyer/LBC Margin Income</Label>
                 <Select
-                  id="buyers_margin_income_account_id"
-                  name="buyers_margin_income_account_id"
-                  defaultValue={ctroAccounts?.buyers_margin_income_account_id ?? ""}
+                  id="buyer_margin_income_account_id"
+                  name="buyer_margin_income_account_id"
+                  defaultValue={cocoaAccountConfig?.buyer_margin_income_account_id ?? ""}
                 >
                   <option value="">Select account</option>
                   {(accounts ?? []).map((account) => (
@@ -560,7 +560,7 @@ export default async function AdminSetupPage({
                 <Select
                   id="evacuation_payable_account_id"
                   name="evacuation_payable_account_id"
-                  defaultValue={ctroAccounts?.evacuation_payable_account_id ?? ""}
+                  defaultValue={cocoaAccountConfig?.evacuation_payable_account_id ?? ""}
                 >
                   <option value="">Select account</option>
                   {(accounts ?? []).map((account) => (
@@ -572,7 +572,7 @@ export default async function AdminSetupPage({
               </div>
               <div className="md:col-span-2">
                 <Button type="submit" variant="outline">
-                  Save CTRO accounts
+                  Save cocoa accounts
                 </Button>
               </div>
             </form>
@@ -581,9 +581,9 @@ export default async function AdminSetupPage({
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>CTRO account mapping</CardTitle>
+            <CardTitle>Cocoa Accounts</CardTitle>
             <CardDescription>
-              CTRO accounts table not available yet. Apply migration 004_ctro_accounts.sql.
+              Cocoa accounts table not available yet. Apply migration 007_cocoa_account_config.sql.
             </CardDescription>
           </CardHeader>
         </Card>

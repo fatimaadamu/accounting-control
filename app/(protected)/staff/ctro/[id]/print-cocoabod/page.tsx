@@ -1,5 +1,16 @@
 import PrintButton from "@/components/print-button";
 import { getCtroById } from "@/lib/data/ctro";
+import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
+
+const formatDate = (value: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 
 export default async function CtroPrintCocoaBodPage({
   params,
@@ -7,107 +18,95 @@ export default async function CtroPrintCocoaBodPage({
   params: { id: string };
 }) {
   const { header, lines, totals } = await getCtroById(params.id);
-  const agent = Array.isArray(header.cocoa_agents) ? header.cocoa_agents[0] : header.cocoa_agents;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6 text-sm text-zinc-800">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold">CTRO CocoaBod Print</h1>
-          <p>CTRO No: {header.ctro_no}</p>
+          <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
+          <p className="text-sm font-medium">COCOA HOUSE – ACCRA</p>
+          <p className="text-sm font-medium">DATE: {formatDate(header.ctro_date)}</p>
         </div>
         <PrintButton />
-      </div>
-
-      <div className="grid gap-2 md:grid-cols-2">
-        <div>Season: {header.season ?? "-"}</div>
-        <div>Date: {header.ctro_date}</div>
-        <div>Region: {header.region ?? "-"}</div>
-        <div>Agent: {(agent as { name?: string } | null)?.name ?? "-"}</div>
       </div>
 
       <table className="w-full border-collapse border border-zinc-200 text-xs">
         <thead>
           <tr className="bg-zinc-100">
-            <th className="border border-zinc-200 px-2 py-1 text-left">Region</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">TOD/Time</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Takeover Center</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Waybill No</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">CWC</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert No</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Date</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Certificate</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Cost Evacuation</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Producer Price</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Buyers Margin</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Total</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Secondary Evac Cost / Tonne
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Takeover Price / Tonne
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Line Total</th>
           </tr>
         </thead>
         <tbody>
           {lines.map((line) => (
             <tr key={line.id}>
-              <td className="border border-zinc-200 px-2 py-1">{header.region ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">
                 {Array.isArray(line.cocoa_depots)
                   ? line.cocoa_depots[0]?.name ?? "-"
                   : line.cocoa_depots?.name ?? "-"}
               </td>
-              <td className="border border-zinc-200 px-2 py-1">{line.tod_time ?? "-"}</td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {Array.isArray(line.takeover_centers)
+                  ? line.takeover_centers[0]?.name ?? "-"
+                  : line.takeover_centers?.name ?? "-"}
+              </td>
               <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{header.ctro_no}</td>
               <td className="border border-zinc-200 px-2 py-1">{line.cwc ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1">{line.purity_cert_no ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1">{line.line_date ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">{line.bags ?? 0}</td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">
-                {Number(line.tonnage ?? 0).toFixed(3)}
+              <td className="border border-zinc-200 px-2 py-1">
+                {line.purity_cert_no ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {Number(line.evacuation_cost ?? 0).toFixed(2)}
+                {formatBags(Number(line.bags ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {Number(line.producer_price_value ?? 0).toFixed(2)}
+                {formatTonnage(Number(line.tonnage ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {Number(line.buyers_margin_value ?? 0).toFixed(2)}
+                {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {Number(line.line_total ?? 0).toFixed(2)}
+                {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.line_total ?? 0))}
               </td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr className="bg-zinc-50">
-            <td className="border border-zinc-200 px-2 py-1" colSpan={8}>
+            <td className="border border-zinc-200 px-2 py-1" colSpan={6}>
               Totals
             </td>
             <td className="border border-zinc-200 px-2 py-1 text-right">
-              {totals?.total_bags ?? 0}
+              {formatBags(Number(totals?.total_bags ?? 0))}
             </td>
             <td className="border border-zinc-200 px-2 py-1 text-right">
-              {Number(totals?.total_tonnage ?? 0).toFixed(3)}
+              {formatTonnage(Number(totals?.total_tonnage ?? 0))}
             </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right">
-              {Number(totals?.total_evacuation ?? 0).toFixed(2)}
-            </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right">
-              {Number(totals?.total_producer_price ?? 0).toFixed(2)}
-            </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right">
-              {Number(totals?.total_buyers_margin ?? 0).toFixed(2)}
-            </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right">
-              {Number(totals?.grand_total ?? 0).toFixed(2)}
+            <td className="border border-zinc-200 px-2 py-1 text-right" colSpan={3}>
+              {formatMoney(Number(totals?.grand_total ?? 0))}
             </td>
           </tr>
         </tfoot>
       </table>
 
-      <div className="pt-6 text-sm text-zinc-600">
-        Signature: ______________________________________
+      <div className="pt-8 text-sm text-zinc-700">
+        <div className="w-64 border-t border-zinc-400 pt-2">SNR. ACCOUNTS MANAGER</div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,11 +10,9 @@ import { Select } from "@/components/ui/select";
 
 type Option = { id: string; name: string };
 
-type DepotOption = Option & { region_id: string };
+type DepotOption = Option;
 
 type RateCardLine = {
-  region_id: string;
-  district_id: string;
   depot_id: string | null;
   takeover_center_id: string;
   producer_price_per_tonne: number;
@@ -23,7 +22,6 @@ type RateCardLine = {
 };
 
 type CtroLine = {
-  region_id: string;
   depot_id: string;
   takeover_center_id: string;
   tod_time: string;
@@ -47,20 +45,19 @@ type CtroLine = {
 
 type CtroLinesFormProps = {
   fieldName?: string;
-  regions: Option[];
   depots: DepotOption[];
   centers: Option[];
-  bagWeightKg: number;
+  bagsPerTonne: number;
   rateCardLines: RateCardLine[];
   rateCardStatus: "ready" | "missing" | "loading";
+  missingMessage?: string | null;
   headerDate?: string;
 };
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
-const emptyLine = (bagWeightKg: number): CtroLine => ({
-  region_id: "",
+const emptyLine = (bagsPerTonne: number): CtroLine => ({
   depot_id: "",
   takeover_center_id: "",
   tod_time: "",
@@ -69,7 +66,7 @@ const emptyLine = (bagWeightKg: number): CtroLine => ({
   cwc: "",
   purity_cert_no: "",
   bags: "",
-  bag_weight_kg: bagWeightKg.toString(),
+  bag_weight_kg: bagsPerTonne.toString(),
   tonnage: "",
   applied_producer_price_per_tonne: "",
   applied_buyer_margin_per_tonne: "",
@@ -82,56 +79,34 @@ const emptyLine = (bagWeightKg: number): CtroLine => ({
   evacuation_treatment: "company_paid",
 });
 
-const formatNumber = (value: number, decimals = 2) => {
-  if (!Number.isFinite(value)) {
-    return "";
-  }
-  return value.toFixed(decimals);
-};
 
 export default function CtroLinesForm({
   fieldName = "lines_json",
-  regions,
   depots,
   centers,
-  bagWeightKg,
+  bagsPerTonne,
   rateCardLines,
   rateCardStatus,
+  missingMessage,
   headerDate,
 }: CtroLinesFormProps) {
-  const [lines, setLines] = React.useState<CtroLine[]>([emptyLine(bagWeightKg)]);
+  const [lines, setLines] = React.useState<CtroLine[]>([emptyLine(bagsPerTonne)]);
   const canEditLines = Boolean(headerDate);
 
   const findRateCardLine = React.useCallback(
     (line: CtroLine) => {
-      if (!line.region_id || !line.takeover_center_id) {
+      if (!line.depot_id || !line.takeover_center_id) {
         return null;
       }
 
       const depotId = line.depot_id || null;
       const exact = rateCardLines.find(
         (item) =>
-          item.region_id === line.region_id &&
           (item.depot_id ?? null) === depotId &&
           item.takeover_center_id === line.takeover_center_id
       );
 
-      if (exact) {
-        return exact;
-      }
-
-      if (depotId) {
-        return (
-          rateCardLines.find(
-            (item) =>
-              item.region_id === line.region_id &&
-              item.depot_id == null &&
-              item.takeover_center_id === line.takeover_center_id
-          ) ?? null
-        );
-      }
-
-      return null;
+      return exact ?? null;
     },
     [rateCardLines]
   );
@@ -139,35 +114,35 @@ export default function CtroLinesForm({
   const recalcLine = React.useCallback(
     (line: CtroLine) => {
       const bags = Number(line.bags || 0);
-      const tonnage = round3((bags * bagWeightKg) / 1000);
+      const rawTonnage = bagsPerTonne ? bags / bagsPerTonne : 0;
+      const displayTonnage = round3(rawTonnage);
 
       const rateLine = findRateCardLine(line);
       const producerRate = rateLine?.producer_price_per_tonne ?? 0;
       const marginRate = rateLine?.buyer_margin_per_tonne ?? 0;
       const evacRate = rateLine?.secondary_evac_cost_per_tonne ?? 0;
-      const takeoverRate =
-        rateLine?.takeover_price_per_tonne ?? round2(producerRate + marginRate + evacRate);
+      const takeoverRate = rateLine?.takeover_price_per_tonne ?? 0;
 
-      const producerValue = round2(tonnage * producerRate);
-      const marginValue = round2(tonnage * marginRate);
-      const evacuationValue = round2(tonnage * evacRate);
-      const lineTotal = round2(tonnage * takeoverRate);
+      const producerValue = round2(rawTonnage * producerRate);
+      const marginValue = round2(rawTonnage * marginRate);
+      const evacuationValue = round2(rawTonnage * evacRate);
+      const lineTotal = round2(rawTonnage * takeoverRate);
 
       return {
         ...line,
-        bag_weight_kg: bagWeightKg.toString(),
-        tonnage: formatNumber(tonnage, 3),
-        applied_producer_price_per_tonne: formatNumber(producerRate, 2),
-        applied_buyer_margin_per_tonne: formatNumber(marginRate, 2),
-        applied_secondary_evac_cost_per_tonne: formatNumber(evacRate, 2),
-        applied_takeover_price_per_tonne: formatNumber(takeoverRate, 2),
-        producer_price_value: formatNumber(producerValue, 2),
-        buyers_margin_value: formatNumber(marginValue, 2),
-        evacuation_cost: formatNumber(evacuationValue, 2),
-        line_total: formatNumber(lineTotal, 2),
+        bag_weight_kg: bagsPerTonne.toString(),
+        tonnage: formatTonnage(displayTonnage),
+        applied_producer_price_per_tonne: formatRate(producerRate),
+        applied_buyer_margin_per_tonne: formatRate(marginRate),
+        applied_secondary_evac_cost_per_tonne: formatRate(evacRate),
+        applied_takeover_price_per_tonne: formatRate(takeoverRate),
+        producer_price_value: formatMoney(producerValue),
+        buyers_margin_value: formatMoney(marginValue),
+        evacuation_cost: formatMoney(evacuationValue),
+        line_total: formatMoney(lineTotal),
       };
     },
-    [bagWeightKg, findRateCardLine]
+    [bagsPerTonne, findRateCardLine]
   );
 
   const updateLine = (index: number, update: Partial<CtroLine>) => {
@@ -183,7 +158,7 @@ export default function CtroLinesForm({
   };
 
   const addLine = () => {
-    setLines((prev) => [...prev, recalcLine(emptyLine(bagWeightKg))]);
+    setLines((prev) => [...prev, recalcLine(emptyLine(bagsPerTonne))]);
   };
 
   const removeLine = (index: number) => {
@@ -192,7 +167,7 @@ export default function CtroLinesForm({
 
   React.useEffect(() => {
     setLines((prev) => prev.map((line) => recalcLine(line)));
-  }, [bagWeightKg, rateCardLines, recalcLine]);
+  }, [bagsPerTonne, rateCardLines, recalcLine]);
 
   const totals = lines.reduce(
     (acc, line) => {
@@ -249,43 +224,41 @@ export default function CtroLinesForm({
 
       {canEditLines && rateCardStatus === "missing" && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          No rate card found for this date. Please add a rate card in Admin.
+          {missingMessage ?? "No rate card found for this date. Please add a rate card in Admin."}
         </div>
       )}
 
       <div className="grid gap-3 rounded-md border border-zinc-200 bg-white p-3 text-sm text-zinc-600 md:grid-cols-3">
         <div>
           <p className="text-xs uppercase text-zinc-400">Total Bags</p>
-          <p className="font-semibold text-zinc-800">{totals.total_bags}</p>
+          <p className="font-semibold text-zinc-800">{formatBags(totals.total_bags)}</p>
         </div>
         <div>
           <p className="text-xs uppercase text-zinc-400">Total Tonnage</p>
-          <p className="font-semibold text-zinc-800">{totals.total_tonnage.toFixed(3)}</p>
+          <p className="font-semibold text-zinc-800">{formatTonnage(totals.total_tonnage)}</p>
         </div>
         <div>
           <p className="text-xs uppercase text-zinc-400">Total Evacuation</p>
-          <p className="font-semibold text-zinc-800">{round2(totals.total_evacuation).toFixed(2)}</p>
+          <p className="font-semibold text-zinc-800">{formatMoney(totals.total_evacuation)}</p>
         </div>
         <div>
           <p className="text-xs uppercase text-zinc-400">Producer Price</p>
-          <p className="font-semibold text-zinc-800">{round2(totals.total_producer_price).toFixed(2)}</p>
+          <p className="font-semibold text-zinc-800">{formatMoney(totals.total_producer_price)}</p>
         </div>
         <div>
           <p className="text-xs uppercase text-zinc-400">Buyers Margin</p>
-          <p className="font-semibold text-zinc-800">{round2(totals.total_buyers_margin).toFixed(2)}</p>
+          <p className="font-semibold text-zinc-800">{formatMoney(totals.total_buyers_margin)}</p>
         </div>
         <div>
           <p className="text-xs uppercase text-zinc-400">Grand Total</p>
-          <p className="font-semibold text-zinc-800">{round2(totals.grand_total).toFixed(2)}</p>
+          <p className="font-semibold text-zinc-800">{formatMoney(totals.grand_total)}</p>
         </div>
       </div>
 
       <div className="space-y-3">
         {lines.map((line, index) => {
-          const availableDepots = depots.filter(
-            (depot) => depot.region_id === line.region_id
-          );
-          const hasSelections = Boolean(line.region_id && line.takeover_center_id);
+          const availableDepots = depots;
+          const hasSelections = Boolean(line.depot_id && line.takeover_center_id);
           const matchedRate = findRateCardLine(line);
           const showMissingRate =
             canEditLines && rateCardStatus === "ready" && hasSelections && !matchedRate;
@@ -294,37 +267,22 @@ export default function CtroLinesForm({
             <div key={`ctro-line-${index}`} className="rounded-md border border-zinc-200 p-4">
               {showMissingRate && (
                 <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                  No matching rate line for selected region/depot/center.
+                  No published rate found for this depot + takeover center on this date.
                 </div>
               )}
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="space-y-1">
-                  <Label>Region</Label>
+                  <Label>Depot</Label>
                   <Select
-                    value={line.region_id}
+                    value={line.depot_id}
                     onChange={(event) =>
                       updateLine(index, {
-                        region_id: event.target.value,
-                        depot_id: "",
+                        depot_id: event.target.value,
                         takeover_center_id: "",
                       })
                     }
                     disabled={!canEditLines}
-                  >
-                    <option value="">Select region</option>
-                    {regions.map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Depot (optional)</Label>
-                  <Select
-                    value={line.depot_id}
-                    onChange={(event) => updateLine(index, { depot_id: event.target.value })}
-                    disabled={!canEditLines}
+                    required
                   >
                     <option value="">Select depot</option>
                     {availableDepots.map((depot) => (
@@ -340,6 +298,7 @@ export default function CtroLinesForm({
                     value={line.takeover_center_id}
                     onChange={(event) => updateLine(index, { takeover_center_id: event.target.value })}
                     disabled={!canEditLines}
+                    required
                   >
                     <option value="">Select center</option>
                     {centers.map((center) => (
@@ -406,16 +365,16 @@ export default function CtroLinesForm({
                   <Input value={line.tonnage} readOnly />
                 </div>
                 <div className="space-y-1">
-                  <Label>Evacuation / tonne</Label>
-                  <Input value={line.applied_secondary_evac_cost_per_tonne} readOnly />
-                </div>
-                <div className="space-y-1">
                   <Label>Producer / tonne</Label>
                   <Input value={line.applied_producer_price_per_tonne} readOnly />
                 </div>
                 <div className="space-y-1">
                   <Label>Margin / tonne</Label>
                   <Input value={line.applied_buyer_margin_per_tonne} readOnly />
+                </div>
+                <div className="space-y-1">
+                  <Label>Evacuation / tonne</Label>
+                  <Input value={line.applied_secondary_evac_cost_per_tonne} readOnly />
                 </div>
                 <div className="space-y-1">
                   <Label>Evacuation Value</Label>

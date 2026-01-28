@@ -14,6 +14,7 @@ import {
   requireCompanyAccess,
   requireUser,
 } from "@/lib/auth";
+import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 import { canAnyRole } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -44,7 +45,7 @@ export default async function CtroPage({
 
   const { data: periods, error: periodError } = await supabaseAdmin()
     .from("periods")
-    .select("id, period_month, period_year, status")
+    .select("id, period_month, period_year, status, start_date, end_date")
     .eq("company_id", companyId)
     .order("start_date", { ascending: true });
 
@@ -63,21 +64,10 @@ export default async function CtroPage({
     );
   }
 
-  const { data: agents, error: agentError } = await supabaseAdmin()
-    .from("cocoa_agents")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .eq("is_active", true)
-    .order("name");
-
-  if (agentError) {
-    throw new Error(agentError.message);
-  }
-
-  const { data: ctroAccounts, error: accountError } = await supabaseAdmin()
-    .from("ctro_accounts")
+  const { data: cocoaAccounts, error: accountError } = await supabaseAdmin()
+    .from("cocoa_account_config")
     .select(
-      "cocoa_stock_field_account_id, cocoa_stock_evacuation_account_id, cocoa_stock_margin_account_id, advances_to_agents_account_id, buyers_margin_income_account_id, evacuation_payable_account_id"
+      "stock_field_account_id, stock_evac_account_id, stock_margin_account_id, advances_account_id, buyer_margin_income_account_id, evacuation_payable_account_id"
     )
     .eq("company_id", companyId)
     .maybeSingle();
@@ -87,58 +77,21 @@ export default async function CtroPage({
   }
 
   const missingCtroAccounts =
-    !ctroAccounts ||
-    !ctroAccounts.cocoa_stock_field_account_id ||
-    !ctroAccounts.cocoa_stock_evacuation_account_id ||
-    !ctroAccounts.cocoa_stock_margin_account_id ||
-    !ctroAccounts.advances_to_agents_account_id ||
-    !ctroAccounts.buyers_margin_income_account_id;
-
-  const { data: accounts, error: glError } = await supabaseAdmin()
-    .from("accounts")
-    .select("id, code, name")
-    .eq("company_id", companyId)
-    .eq("is_active", true)
-    .order("code");
-
-  if (glError) {
-    throw new Error(glError.message);
-  }
-
-  const { data: regions, error: regionError } = await supabaseAdmin()
-    .from("cocoa_regions")
-    .select("id, name")
-    .order("name");
-
-  if (regionError) {
-    throw new Error(regionError.message);
-  }
+    !cocoaAccounts ||
+    !cocoaAccounts.stock_field_account_id ||
+    !cocoaAccounts.stock_evac_account_id ||
+    !cocoaAccounts.stock_margin_account_id ||
+    !cocoaAccounts.advances_account_id ||
+    !cocoaAccounts.buyer_margin_income_account_id;
 
   const { data: depots, error: depotError } = await supabaseAdmin()
     .from("cocoa_depots")
-    .select("id, name, district_id")
+    .select("id, name")
     .order("name");
 
   if (depotError) {
     throw new Error(depotError.message);
   }
-
-  const { data: districts, error: districtError } = await supabaseAdmin()
-    .from("cocoa_districts")
-    .select("id, region_id");
-
-  if (districtError) {
-    throw new Error(districtError.message);
-  }
-
-  const districtRegionMap = new Map(
-    (districts ?? []).map((district) => [district.id, district.region_id])
-  );
-  const depotsWithRegion = (depots ?? []).map((depot) => ({
-    id: depot.id,
-    name: depot.name,
-    region_id: districtRegionMap.get(depot.district_id) ?? "",
-  }));
 
   const { data: centers, error: centerError } = await supabaseAdmin()
     .from("takeover_centers")
@@ -167,28 +120,14 @@ export default async function CtroPage({
     const season = String(formData.get("season") ?? "").trim();
     const ctroDate = String(formData.get("ctro_date") ?? "");
     const periodId = String(formData.get("period_id") ?? "");
-    const region = String(formData.get("region") ?? "").trim();
-    const agentId = String(formData.get("agent_id") ?? "");
     const remarks = String(formData.get("remarks") ?? "").trim();
-    const evacuationMode = String(formData.get("evacuation_payment_mode") ?? "payable") as
-      | "payable"
-      | "cash";
-    const cashAccountId = String(formData.get("evacuation_cash_account_id") ?? "");
     const linesJson = String(formData.get("lines_json") ?? "[]");
     const lines = JSON.parse(linesJson) as Array<Record<string, string>>;
 
     if (!ctroDate || !periodId) {
       redirect(
         `/staff/ctro?toast=error&message=${encodeURIComponent(
-          "CTRO date and period are required."
-        )}`
-      );
-    }
-
-    if (evacuationMode === "cash" && !cashAccountId) {
-      redirect(
-        `/staff/ctro?toast=error&message=${encodeURIComponent(
-          "Select a Cash/Bank account for evacuation payment."
+          "Select CTRO Date to apply rate card."
         )}`
       );
     }
@@ -204,17 +143,25 @@ export default async function CtroPage({
       );
     }
 
+    if (!season) {
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "No rate card for selected date."
+        )}`
+      );
+    }
+
     if (
       lines.some(
         (line) =>
-          line.region_id &&
+          line.depot_id &&
           line.takeover_center_id &&
           Number(line.applied_takeover_price_per_tonne ?? 0) <= 0
       )
     ) {
       redirect(
         `/staff/ctro?toast=error&message=${encodeURIComponent(
-          "No matching rate line for selected region/depot/center."
+          "No published rate found for this depot + takeover center on this date."
         )}`
       );
     }
@@ -225,21 +172,19 @@ export default async function CtroPage({
         period_id: periodId,
         season,
         ctro_date: ctroDate,
-        region,
-        agent_id: agentId || null,
         remarks: remarks || null,
-        evacuation_payment_mode: evacuationMode,
-        evacuation_cash_account_id: cashAccountId || null,
+        evacuation_payment_mode: "payable",
+        evacuation_cash_account_id: null,
         lines: lines.map((line) => ({
           tod_time: line.tod_time,
           waybill_no: line.waybill_no,
           ctro_ref_no: line.ctro_ref_no,
           cwc: line.cwc,
           purity_cert_no: line.purity_cert_no,
-          region_id: line.region_id,
+          region_id: null,
           depot_id: line.depot_id || null,
           takeover_center_id: line.takeover_center_id,
-          bag_weight_kg: Number(line.bag_weight_kg) || 64,
+          bag_weight_kg: Number(line.bag_weight_kg) || 16,
           bags: Number(line.bags) || 0,
           tonnage: Number(line.tonnage) || 0,
           applied_producer_price_per_tonne: Number(line.applied_producer_price_per_tonne) || 0,
@@ -369,10 +314,7 @@ export default async function CtroPage({
             <CtroCreateForm
               action={createAction}
               periods={periods ?? []}
-              agents={agents ?? []}
-              accounts={accounts ?? []}
-              regions={regions ?? []}
-              depots={depotsWithRegion}
+              depots={depots ?? []}
               centers={centers ?? []}
             />
           )}
@@ -391,7 +333,6 @@ export default async function CtroPage({
                 <TableHead>Date</TableHead>
                 <TableHead>CTRO No</TableHead>
                 <TableHead>Season</TableHead>
-                <TableHead>Region</TableHead>
                 <TableHead>Bags</TableHead>
                 <TableHead>Tonnage</TableHead>
                 <TableHead>Total</TableHead>
@@ -400,13 +341,13 @@ export default async function CtroPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(ctroHeaders ?? []).length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-sm text-zinc-500">
-                    No CTROs yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
+                {(ctroHeaders ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-sm text-zinc-500">
+                      No CTROs yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
                 ctroHeaders?.map((ctro) => {
                   const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
                   return (
@@ -414,10 +355,9 @@ export default async function CtroPage({
                       <TableCell>{ctro.ctro_date}</TableCell>
                       <TableCell>{ctro.ctro_no}</TableCell>
                       <TableCell>{ctro.season ?? "-"}</TableCell>
-                      <TableCell>{ctro.region ?? "-"}</TableCell>
-                      <TableCell>{totals?.total_bags ?? 0}</TableCell>
-                      <TableCell>{Number(totals?.total_tonnage ?? 0).toFixed(3)}</TableCell>
-                      <TableCell>{Number(totals?.grand_total ?? 0).toFixed(2)}</TableCell>
+                      <TableCell>{formatBags(Number(totals?.total_bags ?? 0))}</TableCell>
+                      <TableCell>{formatTonnage(Number(totals?.total_tonnage ?? 0))}</TableCell>
+                      <TableCell>{formatMoney(Number(totals?.grand_total ?? 0))}</TableCell>
                       <TableCell>{ctro.status}</TableCell>
                       <TableCell className="space-y-2">
                         <Link

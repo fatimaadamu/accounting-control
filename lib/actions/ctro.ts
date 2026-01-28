@@ -12,7 +12,6 @@ type CtroLineInput = {
   ctro_ref_no?: string;
   cwc?: string;
   purity_cert_no?: string;
-  line_date?: string;
   region_id?: string;
   district_id?: string;
   depot_id?: string | null;
@@ -41,11 +40,11 @@ type CtroTotals = {
 };
 
 type CtroAccounts = {
-  cocoa_stock_field_account_id: string | null;
-  cocoa_stock_evacuation_account_id: string | null;
-  cocoa_stock_margin_account_id: string | null;
-  advances_to_agents_account_id: string | null;
-  buyers_margin_income_account_id: string | null;
+  stock_field_account_id: string | null;
+  stock_evac_account_id: string | null;
+  stock_margin_account_id: string | null;
+  advances_account_id: string | null;
+  buyer_margin_income_account_id: string | null;
   evacuation_payable_account_id: string | null;
 };
 
@@ -89,7 +88,7 @@ const computeTotals = (lines: CtroLineInput[]) => {
       district_id: line.district_id ?? null,
       depot_id: line.depot_id ?? null,
       takeover_center_id: line.takeover_center_id ?? null,
-      bag_weight_kg: Number(line.bag_weight_kg ?? 64),
+      bag_weight_kg: Number(line.bag_weight_kg ?? 16),
       bags,
       tonnage,
       evacuation_cost: evacuation,
@@ -115,9 +114,9 @@ const computeTotals = (lines: CtroLineInput[]) => {
 
 const getCtroAccounts = async (companyId: string) => {
   const { data, error } = await supabaseAdmin()
-    .from("ctro_accounts")
+    .from("cocoa_account_config")
     .select(
-      "cocoa_stock_field_account_id, cocoa_stock_evacuation_account_id, cocoa_stock_margin_account_id, advances_to_agents_account_id, buyers_margin_income_account_id, evacuation_payable_account_id"
+      "stock_field_account_id, stock_evac_account_id, stock_margin_account_id, advances_account_id, buyer_margin_income_account_id, evacuation_payable_account_id"
     )
     .eq("company_id", companyId)
     .single();
@@ -188,12 +187,12 @@ const insertAuditLog = async (payload: {
 export const createCtroDraft = async (payload: {
   company_id: string;
   period_id: string;
-  season: string;
+  season?: string;
   ctro_date: string;
-  region: string;
+  region?: string;
   agent_id?: string | null;
   remarks?: string | null;
-  evacuation_payment_mode: "payable" | "cash";
+  evacuation_payment_mode?: "payable" | "cash";
   evacuation_cash_account_id?: string | null;
   lines: CtroLineInput[];
 }) => {
@@ -216,14 +215,14 @@ export const createCtroDraft = async (payload: {
       company_id: payload.company_id,
       period_id: payload.period_id,
       ctro_no: ctroNo,
-      season: payload.season,
+      season: payload.season ?? null,
       ctro_date: payload.ctro_date,
-      region: payload.region,
+      region: payload.region ?? null,
       agent_id: payload.agent_id ?? null,
       status: "draft",
       remarks: payload.remarks ?? null,
       created_by: user.id,
-      evacuation_payment_mode: payload.evacuation_payment_mode,
+      evacuation_payment_mode: payload.evacuation_payment_mode ?? "payable",
       evacuation_cash_account_id: payload.evacuation_cash_account_id ?? null,
     })
     .select("id")
@@ -242,12 +241,11 @@ export const createCtroDraft = async (payload: {
       ctro_ref_no: line.ctro_ref_no ?? null,
       cwc: line.cwc ?? null,
       purity_cert_no: line.purity_cert_no ?? null,
-      line_date: line.line_date ?? null,
       region_id: line.region_id ?? null,
       district_id: line.district_id ?? null,
       depot_id: line.depot_id ?? null,
       takeover_center_id: line.takeover_center_id ?? null,
-      bag_weight_kg: line.bag_weight_kg ?? 64,
+      bag_weight_kg: line.bag_weight_kg ?? 16,
       bags: line.bags ?? 0,
       tonnage: line.tonnage ?? 0,
       applied_producer_price_per_tonne: line.applied_producer_price_per_tonne ?? 0,
@@ -415,11 +413,11 @@ export const postCtro = async (
 
   const accounts = await getCtroAccounts(header.company_id);
   if (
-    !accounts?.cocoa_stock_field_account_id ||
-    !accounts.cocoa_stock_margin_account_id ||
-    !accounts.cocoa_stock_evacuation_account_id ||
-    !accounts.advances_to_agents_account_id ||
-    !accounts.buyers_margin_income_account_id
+    !accounts?.stock_field_account_id ||
+    !accounts.stock_margin_account_id ||
+    !accounts.stock_evac_account_id ||
+    !accounts.advances_account_id ||
+    !accounts.buyer_margin_income_account_id
   ) {
     throw new Error("Cocoa accounts are not configured. Ask Admin to run setup.");
   }
@@ -440,12 +438,12 @@ export const postCtro = async (
 
   if (producerPrice > 0) {
     journalLines.push({
-      account_id: accounts.cocoa_stock_field_account_id,
+      account_id: accounts.stock_field_account_id,
       debit: producerPrice,
       credit: 0,
     });
     journalLines.push({
-      account_id: accounts.advances_to_agents_account_id,
+      account_id: accounts.advances_account_id,
       debit: 0,
       credit: producerPrice,
     });
@@ -453,12 +451,12 @@ export const postCtro = async (
 
   if (buyersMargin > 0) {
     journalLines.push({
-      account_id: accounts.cocoa_stock_margin_account_id,
+      account_id: accounts.stock_margin_account_id,
       debit: buyersMargin,
       credit: 0,
     });
     journalLines.push({
-      account_id: accounts.buyers_margin_income_account_id,
+      account_id: accounts.buyer_margin_income_account_id,
       debit: 0,
       credit: buyersMargin,
     });
@@ -467,7 +465,7 @@ export const postCtro = async (
   const totalEvacuation = round2(evacuationPaid + evacuationDeducted);
   if (totalEvacuation > 0) {
     journalLines.push({
-      account_id: accounts.cocoa_stock_evacuation_account_id,
+      account_id: accounts.stock_evac_account_id,
       debit: totalEvacuation,
       credit: 0,
     });
@@ -490,7 +488,7 @@ export const postCtro = async (
 
   if (evacuationDeducted > 0) {
     journalLines.push({
-      account_id: accounts.advances_to_agents_account_id,
+      account_id: accounts.advances_account_id,
       debit: 0,
       credit: evacuationDeducted,
     });

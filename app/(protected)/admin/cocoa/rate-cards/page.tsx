@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import ToastMessage from "@/components/toast-message";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { formatMoney } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const parseCsv = (raw: string) =>
@@ -49,10 +50,16 @@ const ensureDefaultDistrict = async (regionId: string) => {
 export default async function CocoaRateCardsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ rate_card_id?: string; toast?: string; message?: string }>;
+  searchParams?: Promise<{
+    rate_card_id?: string;
+    toast?: string;
+    message?: string;
+    depot?: string;
+  }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const selectedRateCardId = resolvedSearchParams?.rate_card_id ?? "";
+  const depotFilter = (resolvedSearchParams?.depot ?? "").trim().toLowerCase();
 
   const user = await requireUser();
   const companyId = await ensureActiveCompanyId(user.id, "/admin/cocoa/rate-cards");
@@ -70,14 +77,41 @@ export default async function CocoaRateCardsPage({
 
   await requireCompanyRole(user.id, companyId, ["Admin"]);
 
-  const { data: rateCards, error: rateCardError } = await supabaseAdmin()
+  let rateCards:
+    | Array<{
+        id: string;
+        season: string | null;
+        effective_from: string;
+        effective_to: string | null;
+        bag_weight_kg: number | null;
+        bags_per_tonne?: number | null;
+      }>
+    | null = null;
+  const { data: rateCardsData, error: rateCardError } = await supabaseAdmin()
     .from("cocoa_rate_cards")
-    .select("id, season, effective_from, effective_to, bag_weight_kg")
+    .select("id, season, effective_from, effective_to, bag_weight_kg, bags_per_tonne")
     .eq("company_id", companyId)
     .order("effective_from", { ascending: false });
 
-  if (rateCardError) {
+  if (rateCardError && rateCardError.message.includes("bags_per_tonne")) {
+    const { data: fallbackData, error: fallbackError } = await supabaseAdmin()
+      .from("cocoa_rate_cards")
+      .select("id, season, effective_from, effective_to, bag_weight_kg")
+      .eq("company_id", companyId)
+      .order("effective_from", { ascending: false });
+
+    if (fallbackError) {
+      throw new Error(fallbackError.message);
+    }
+
+    rateCards = (fallbackData ?? []).map((card) => ({
+      ...card,
+      bags_per_tonne: null,
+    }));
+  } else if (rateCardError) {
     throw new Error(rateCardError.message);
+  } else {
+    rateCards = rateCardsData ?? [];
   }
 
   const rateCardId = selectedRateCardId || rateCards?.[0]?.id || "";
@@ -122,7 +156,7 @@ export default async function CocoaRateCardsPage({
     ? await supabaseAdmin()
         .from("cocoa_rate_card_lines")
         .select(
-          "id, rate_card_id, region_id, district_id, depot_id, takeover_center_id, producer_price_per_tonne, buyer_margin_per_tonne, secondary_evac_cost_per_tonne, takeover_price_per_tonne"
+          "id, rate_card_id, region_id, district_id, depot_id, takeover_center_id, producer_price_per_tonne, buyer_margin_per_tonne, secondary_evac_cost_per_tonne, takeover_price_per_tonne, created_at"
         )
         .eq("rate_card_id", rateCardId)
     : { data: [], error: null };
@@ -131,12 +165,62 @@ export default async function CocoaRateCardsPage({
     throw new Error(linesError.message);
   }
 
+  const regionNameMap = new Map((regions ?? []).map((region) => [region.id, region.name]));
+  const depotNameMap = new Map((depots ?? []).map((depot) => [depot.id, depot.name]));
+  const centerNameMap = new Map((centers ?? []).map((center) => [center.id, center.name]));
+  const centerSortOrder = ["Tema", "Kaase", "Takoradi"];
+
+  const filteredLines = (lines ?? []).filter((line) => {
+    if (!depotFilter) {
+      return true;
+    }
+    const depotName = depotNameMap.get(line.depot_id ?? "") ?? "";
+    return depotName.toLowerCase().includes(depotFilter);
+  });
+
+  const orderedLines = [...filteredLines].sort((a, b) => {
+    const aTime = new Date(a.created_at ?? 0).getTime();
+    const bTime = new Date(b.created_at ?? 0).getTime();
+    return bTime - aTime;
+  });
+
+  const uniqueLines = new Map<string, (typeof orderedLines)[number]>();
+  let duplicateCount = 0;
+  for (const line of orderedLines) {
+    const key = `${line.depot_id ?? "null"}:${line.takeover_center_id}`;
+    if (uniqueLines.has(key)) {
+      duplicateCount += 1;
+      continue;
+    }
+    uniqueLines.set(key, line);
+  }
+
+  const groupedByRegion = new Map<
+    string,
+    Map<string, Map<string, (typeof orderedLines)[number]>>
+  >();
+  for (const line of Array.from(uniqueLines.values())) {
+    const regionId = line.region_id ?? "unknown";
+    if (!groupedByRegion.has(regionId)) {
+      groupedByRegion.set(regionId, new Map());
+    }
+    const centerMap = groupedByRegion.get(regionId)!;
+    const centerId = line.takeover_center_id;
+    if (!centerMap.has(centerId)) {
+      centerMap.set(centerId, new Map());
+    }
+    const depotMap = centerMap.get(centerId)!;
+    const depotId = line.depot_id ?? "unknown";
+    depotMap.set(depotId, line);
+  }
+
   async function createRateCardAction(formData: FormData) {
     "use server";
     const season = String(formData.get("season") ?? "").trim();
     const effectiveFrom = String(formData.get("effective_from") ?? "");
     const effectiveTo = String(formData.get("effective_to") ?? "") || null;
     const bagWeightKg = Number(formData.get("bag_weight_kg") ?? 64);
+    const bagsPerTonne = Number(formData.get("bags_per_tonne") ?? 16);
 
     if (!season || !effectiveFrom) {
       throw new Error("Season and effective from date are required.");
@@ -150,6 +234,7 @@ export default async function CocoaRateCardsPage({
         effective_from: effectiveFrom,
         effective_to: effectiveTo,
         bag_weight_kg: bagWeightKg || 64,
+        bags_per_tonne: bagsPerTonne || 16,
       });
 
     if (error) {
@@ -173,15 +258,15 @@ export default async function CocoaRateCardsPage({
     "use server";
     const rateCardIdValue = String(formData.get("rate_card_id") ?? "");
     const regionId = String(formData.get("region_id") ?? "");
-    const depotId = String(formData.get("depot_id") ?? "") || null;
+    const depotId = String(formData.get("depot_id") ?? "");
     const takeoverCenterId = String(formData.get("takeover_center_id") ?? "");
     const producerPrice = Number(formData.get("producer_price_per_tonne") ?? 0);
     const buyerMargin = Number(formData.get("buyer_margin_per_tonne") ?? 0);
     const secondaryEvac = Number(formData.get("secondary_evac_cost_per_tonne") ?? 0);
     const takeoverPrice = Number(formData.get("takeover_price_per_tonne") ?? 0);
 
-    if (!rateCardIdValue || !regionId || !takeoverCenterId) {
-      throw new Error("Rate card, region, and takeover center are required.");
+    if (!rateCardIdValue || !regionId || !depotId || !takeoverCenterId) {
+      throw new Error("Rate card, region, depot, and takeover center are required.");
     }
 
     if (producerPrice <= 0 || buyerMargin <= 0 || secondaryEvac <= 0 || takeoverPrice <= 0) {
@@ -221,6 +306,39 @@ export default async function CocoaRateCardsPage({
     revalidatePath("/admin/cocoa/rate-cards");
   }
 
+  async function updateLineAction(formData: FormData) {
+    "use server";
+    const lineId = String(formData.get("line_id") ?? "");
+    const producerPrice = Number(formData.get("producer_price_per_tonne") ?? 0);
+    const buyerMargin = Number(formData.get("buyer_margin_per_tonne") ?? 0);
+    const secondaryEvac = Number(formData.get("secondary_evac_cost_per_tonne") ?? 0);
+    const takeoverPrice = Number(formData.get("takeover_price_per_tonne") ?? 0);
+
+    if (!lineId) {
+      throw new Error("Rate card line not found.");
+    }
+
+    if (producerPrice <= 0 || buyerMargin <= 0 || secondaryEvac <= 0 || takeoverPrice <= 0) {
+      throw new Error("All rate values must be greater than 0.");
+    }
+
+    const { error } = await supabaseAdmin()
+      .from("cocoa_rate_card_lines")
+      .update({
+        producer_price_per_tonne: producerPrice,
+        buyer_margin_per_tonne: buyerMargin,
+        secondary_evac_cost_per_tonne: secondaryEvac,
+        takeover_price_per_tonne: takeoverPrice,
+      })
+      .eq("id", lineId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    revalidatePath("/admin/cocoa/rate-cards");
+  }
+
   async function importCsvAction(formData: FormData) {
     "use server";
     const rateCardIdValue = String(formData.get("rate_card_id") ?? "");
@@ -236,12 +354,19 @@ export default async function CocoaRateCardsPage({
       redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
     }
 
-    const regionMap = new Map(regions.map((region) => [region.name.toLowerCase(), region.id]));
+    const regionList = regions ?? [];
+    const districtList = districts ?? [];
+    const depotList = depots ?? [];
+    const centerList = centers ?? [];
+
+    const regionMap = new Map(
+      regionList.map((region) => [region.name.toLowerCase(), region.id])
+    );
     const districtRegionMap = new Map(
-      districts.map((district) => [district.id, district.region_id])
+      districtList.map((district) => [district.id, district.region_id])
     );
     const depotMap = new Map(
-      depots
+      depotList
         .map((depot) => {
           const regionId = districtRegionMap.get(depot.district_id);
           if (!regionId) {
@@ -251,10 +376,31 @@ export default async function CocoaRateCardsPage({
         })
         .filter((entry): entry is readonly [string, string] => entry !== null)
     );
-    const centerMap = new Map(centers.map((center) => [center.name.toLowerCase(), center.id]));
+    const centerMap = new Map(
+      centerList.map((center) => [center.name.toLowerCase(), center.id])
+    );
 
     const rows = parseCsv(csv);
     const payload: Array<Record<string, unknown>> = [];
+    let insertedCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
+    const { data: existingLines, error: existingLinesError } = await supabaseAdmin()
+      .from("cocoa_rate_card_lines")
+      .select("depot_id, takeover_center_id")
+      .eq("rate_card_id", rateCardIdValue);
+
+    if (existingLinesError) {
+      throw new Error(existingLinesError.message);
+    }
+
+    const existingKeys = new Set(
+      (existingLines ?? []).map(
+        (line) => `${line.depot_id ?? "null"}:${line.takeover_center_id}`
+      )
+    );
+    const incomingKeys = new Set<string>();
     const districtMap = new Map<string, string>();
 
     for (const [index, cells] of rows.entries()) {
@@ -273,19 +419,8 @@ export default async function CocoaRateCardsPage({
       const normalizedCenter = (centerName ?? "").trim();
 
       if (!normalizedRegion || !normalizedDepot || !normalizedCenter) {
-        const missing: string[] = [];
-        if (!normalizedRegion) missing.push("region");
-        if (!normalizedDepot) missing.push("depot");
-        if (!normalizedCenter) missing.push("takeover_center");
-        const message = `Row ${index + 1}: missing ${missing.join(
-          ", "
-        )}. Provide region,depot,center and import Geo first.`;
-        const query = new URLSearchParams({
-          toast: "error",
-          message,
-          rate_card_id: rateCardIdValue,
-        });
-        redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
+        failedCount += 1;
+        continue;
       }
 
       const regionId = regionMap.get(normalizedRegion.toLowerCase());
@@ -294,19 +429,8 @@ export default async function CocoaRateCardsPage({
       const centerId = centerMap.get(normalizedCenter.toLowerCase());
 
       if (!regionId || !centerId || !depotId) {
-        const missingParts: string[] = [];
-        if (!regionId) missingParts.push(`region "${normalizedRegion}"`);
-        if (!depotId) missingParts.push(`depot "${normalizedDepot}"`);
-        if (!centerId) missingParts.push(`center "${normalizedCenter}"`);
-        const message = `Row ${index + 1}: ${missingParts.join(
-          ", "
-        )} not found. Import Geo first and ensure names match.`;
-        const query = new URLSearchParams({
-          toast: "error",
-          message,
-          rate_card_id: rateCardIdValue,
-        });
-        redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
+        failedCount += 1;
+        continue;
       }
 
       let districtId = districtMap.get(regionId);
@@ -326,15 +450,17 @@ export default async function CocoaRateCardsPage({
         secondaryEvac <= 0 ||
         takeoverPrice <= 0
       ) {
-        const message = `Row ${index + 1}: rates must be > 0 (producer, margin, evac, takeover).`;
-        const query = new URLSearchParams({
-          toast: "error",
-          message,
-          rate_card_id: rateCardIdValue,
-        });
-        redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
+        failedCount += 1;
+        continue;
       }
 
+      const key = `${depotId}:${centerId}`;
+      if (existingKeys.has(key) || incomingKeys.has(key)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      incomingKeys.add(key);
       payload.push({
         rate_card_id: rateCardIdValue,
         region_id: regionId,
@@ -348,12 +474,22 @@ export default async function CocoaRateCardsPage({
       });
     }
 
-    const { error } = await supabaseAdmin().from("cocoa_rate_card_lines").insert(payload);
-    if (error) {
-      throw new Error(error.message);
+    if (payload.length > 0) {
+      const { error } = await supabaseAdmin().from("cocoa_rate_card_lines").insert(payload);
+      if (error) {
+        throw new Error(error.message);
+      }
+      insertedCount = payload.length;
     }
 
     revalidatePath("/admin/cocoa/rate-cards");
+    const message = `Imported: ${insertedCount} inserted, ${skippedCount} duplicates skipped, ${failedCount} failed.`;
+    const query = new URLSearchParams({
+      toast: failedCount > 0 ? "error" : "success",
+      message,
+      rate_card_id: rateCardIdValue,
+    });
+    redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
   }
 
   return (
@@ -387,6 +523,10 @@ export default async function CocoaRateCardsPage({
               <Label>Bag weight (kg)</Label>
               <Input name="bag_weight_kg" type="number" step="0.01" defaultValue={64} />
             </div>
+            <div className="space-y-1">
+              <Label>Bags per tonne</Label>
+              <Input name="bags_per_tonne" type="number" step="0.01" defaultValue={16} />
+            </div>
             <div className="md:col-span-4">
               <Button type="submit">Create rate card</Button>
             </div>
@@ -397,13 +537,14 @@ export default async function CocoaRateCardsPage({
                 <TableHead>Season</TableHead>
                 <TableHead>Effective</TableHead>
                 <TableHead>Bag weight</TableHead>
+                <TableHead>Bags/tonne</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(rateCards ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-sm text-zinc-500">
+                  <TableCell colSpan={5} className="text-sm text-zinc-500">
                     No rate cards yet.
                   </TableCell>
                 </TableRow>
@@ -415,6 +556,7 @@ export default async function CocoaRateCardsPage({
                       {card.effective_from} {card.effective_to ? `? ${card.effective_to}` : ""}
                     </TableCell>
                     <TableCell>{Number(card.bag_weight_kg ?? 64).toFixed(2)}kg</TableCell>
+                    <TableCell>{Number(card.bags_per_tonne ?? 16).toFixed(2)}</TableCell>
                     <TableCell className="flex flex-wrap gap-2">
                       <Link
                         href={`/admin/cocoa/rate-cards?rate_card_id=${card.id}`}
@@ -461,8 +603,8 @@ export default async function CocoaRateCardsPage({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Depot (optional)</Label>
-                  <Select name="depot_id">
+                  <Label>Depot</Label>
+                  <Select name="depot_id" required>
                     <option value="">Select depot</option>
                     {depots?.map((depot) => (
                       <option key={depot.id} value={depot.id}>
@@ -529,49 +671,142 @@ export default async function CocoaRateCardsPage({
                 </form>
               </details>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Region</TableHead>
-                    <TableHead>Depot</TableHead>
-                    <TableHead>Center</TableHead>
-                    <TableHead>Producer</TableHead>
-                    <TableHead>Margin</TableHead>
-                    <TableHead>Evac</TableHead>
-                    <TableHead>Takeover</TableHead>
-                    <TableHead>Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(lines ?? []).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-sm text-zinc-500">
-                        No lines yet.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    lines?.map((line) => (
-                      <TableRow key={line.id}>
-                        <TableCell>{regions?.find((r) => r.id === line.region_id)?.name ?? "-"}</TableCell>
-                        <TableCell>{depots?.find((d) => d.id === line.depot_id)?.name ?? "-"}</TableCell>
-                        <TableCell>{centers?.find((c) => c.id === line.takeover_center_id)?.name ?? "-"}</TableCell>
-                        <TableCell>{Number(line.producer_price_per_tonne ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>{Number(line.buyer_margin_per_tonne ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>{Number(line.secondary_evac_cost_per_tonne ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>{Number(line.takeover_price_per_tonne ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <form action={deleteLineAction}>
-                            <input type="hidden" name="line_id" value={line.id} />
-                            <Button type="submit" variant="ghost">
-                              Delete
-                            </Button>
-                          </form>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <form className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="rate_card_id" value={rateCardId} />
+                <div className="space-y-1">
+                  <Label>Filter by depot</Label>
+                  <Input name="depot" placeholder="Search depot name" defaultValue={depotFilter} />
+                </div>
+                <Button type="submit" variant="outline">
+                  Filter
+                </Button>
+              </form>
+
+              {duplicateCount > 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {duplicateCount} duplicate rate line(s) hidden. The latest entry per depot + center is shown.
+                </div>
+              )}
+
+              {Array.from(uniqueLines.values()).length === 0 ? (
+                <div className="rounded-md border border-dashed border-zinc-200 p-4 text-sm text-zinc-500">
+                  No rate card lines match this filter.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {Array.from(groupedByRegion.entries())
+                    .sort((a, b) => {
+                      const nameA = regionNameMap.get(a[0]) ?? "";
+                      const nameB = regionNameMap.get(b[0]) ?? "";
+                      return nameA.localeCompare(nameB);
+                    })
+                    .map(([regionId, depotMap]) => (
+                      <details key={regionId} className="rounded-md border border-zinc-200 p-4">
+                        <summary className="cursor-pointer text-sm font-semibold text-zinc-800">
+                          {regionNameMap.get(regionId) ?? "Unknown region"}
+                        </summary>
+                        <div className="mt-4 space-y-4">
+                          {Array.from(depotMap.entries())
+                            .sort((a, b) => {
+                              const nameA = centerNameMap.get(a[0]) ?? "";
+                              const nameB = centerNameMap.get(b[0]) ?? "";
+                              const aIndex = centerSortOrder.indexOf(nameA);
+                              const bIndex = centerSortOrder.indexOf(nameB);
+                              if (aIndex !== -1 || bIndex !== -1) {
+                                return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+                              }
+                              return nameA.localeCompare(nameB);
+                            })
+                            .map(([centerId, depotLines]) => (
+                              <details key={centerId} className="rounded-md border border-zinc-100 p-3">
+                                <summary className="cursor-pointer text-sm font-medium text-zinc-700">
+                                  {centerNameMap.get(centerId) ?? "Unknown center"}
+                                </summary>
+                                <div className="mt-3 space-y-3">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Depot</TableHead>
+                                        <TableHead>Producer</TableHead>
+                                        <TableHead>Margin</TableHead>
+                                        <TableHead>Evac</TableHead>
+                                        <TableHead>Takeover</TableHead>
+                                        <TableHead>Action</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {Array.from(depotLines.entries())
+                                        .sort((a, b) => {
+                                          const nameA = depotNameMap.get(a[0]) ?? "";
+                                          const nameB = depotNameMap.get(b[0]) ?? "";
+                                          return nameA.localeCompare(nameB);
+                                        })
+                                        .map(([depotId, line]) => (
+                                          <TableRow key={line.id}>
+                                            <TableCell>{depotNameMap.get(depotId) ?? "-"}</TableCell>
+                                            <TableCell>{formatMoney(Number(line.producer_price_per_tonne ?? 0))}</TableCell>
+                                            <TableCell>{formatMoney(Number(line.buyer_margin_per_tonne ?? 0))}</TableCell>
+                                            <TableCell>{formatMoney(Number(line.secondary_evac_cost_per_tonne ?? 0))}</TableCell>
+                                            <TableCell>{formatMoney(Number(line.takeover_price_per_tonne ?? 0))}</TableCell>
+                                            <TableCell className="space-y-2">
+                                              <details className="inline-block">
+                                                <summary className="cursor-pointer text-sm text-zinc-600 hover:text-zinc-900">
+                                                  Edit
+                                                </summary>
+                                                <form action={updateLineAction} className="mt-2 grid gap-2">
+                                                  <input type="hidden" name="line_id" value={line.id} />
+                                                  <Input
+                                                    name="producer_price_per_tonne"
+                                                    type="number"
+                                                    step="0.01"
+                                                    defaultValue={line.producer_price_per_tonne ?? 0}
+                                                    required
+                                                  />
+                                                  <Input
+                                                    name="buyer_margin_per_tonne"
+                                                    type="number"
+                                                    step="0.01"
+                                                    defaultValue={line.buyer_margin_per_tonne ?? 0}
+                                                    required
+                                                  />
+                                                  <Input
+                                                    name="secondary_evac_cost_per_tonne"
+                                                    type="number"
+                                                    step="0.01"
+                                                    defaultValue={line.secondary_evac_cost_per_tonne ?? 0}
+                                                    required
+                                                  />
+                                                  <Input
+                                                    name="takeover_price_per_tonne"
+                                                    type="number"
+                                                    step="0.01"
+                                                    defaultValue={line.takeover_price_per_tonne ?? 0}
+                                                    required
+                                                  />
+                                                  <Button type="submit" variant="outline">
+                                                    Save
+                                                  </Button>
+                                                </form>
+                                              </details>
+                                              <form action={deleteLineAction}>
+                                                <input type="hidden" name="line_id" value={line.id} />
+                                                <Button type="submit" variant="ghost">
+                                                  Delete
+                                                </Button>
+                                              </form>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              </details>
+                            ))}
+                        </div>
+                      </details>
+                    ))}
+                </div>
+              )}
             </>
           )}
         </CardContent>
