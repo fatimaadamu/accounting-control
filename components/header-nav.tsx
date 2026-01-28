@@ -13,7 +13,6 @@ type HeaderNavProps = {
   activeCompanyId: string | null;
   isAdminForActiveCompany: boolean;
   activeRole: string | null;
-  userLabel: string;
 };
 
 export default function HeaderNav({
@@ -21,7 +20,6 @@ export default function HeaderNav({
   activeCompanyId,
   isAdminForActiveCompany,
   activeRole,
-  userLabel,
 }: HeaderNavProps) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
@@ -104,9 +102,6 @@ export default function HeaderNav({
         />
       )}
 
-      {userLabel && (
-        <span className="text-sm text-zinc-500">{userLabel}</span>
-      )}
       <LogoutButton />
     </div>
   );

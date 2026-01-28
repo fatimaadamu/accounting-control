@@ -60,7 +60,6 @@ export default async function ProtectedLayout({
   const activeRole = activeCompanyId
     ? roles.find((role) => role.company_id === activeCompanyId)?.role ?? null
     : null;
-  const userLabel = user.user_metadata?.display_name ?? user.email ?? "";
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -71,7 +70,6 @@ export default async function ProtectedLayout({
             activeCompanyId={activeCompanyId}
             isAdminForActiveCompany={isAdminForActiveCompany}
             activeRole={activeRole}
-            userLabel={userLabel}
           />
         </div>
       </header>

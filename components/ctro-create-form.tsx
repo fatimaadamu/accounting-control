@@ -9,8 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 
 type Option = { id: string; name: string };
-type DistrictOption = Option & { region_id: string };
-type DepotOption = Option & { district_id: string };
+type DepotOption = Option & { region_id: string };
 
 type RateCardLine = {
   region_id: string;
@@ -34,7 +33,6 @@ type CtroCreateFormProps = {
   agents: Array<{ id: string; name: string }>;
   accounts: Array<{ id: string; code: string; name: string }>;
   regions: Option[];
-  districts: DistrictOption[];
   depots: DepotOption[];
   centers: Option[];
 };
@@ -45,7 +43,6 @@ export default function CtroCreateForm({
   agents,
   accounts,
   regions,
-  districts,
   depots,
   centers,
 }: CtroCreateFormProps) {
@@ -101,10 +98,6 @@ export default function CtroCreateForm({
     <form action={action} className="space-y-4">
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-2">
-          <Label>Season</Label>
-          <Input name="season" placeholder="2025/2026" />
-        </div>
-        <div className="space-y-2">
           <Label>Date</Label>
           <Input
             name="ctro_date"
@@ -113,6 +106,10 @@ export default function CtroCreateForm({
             value={ctroDate}
             onChange={(event) => setCtroDate(event.target.value)}
           />
+        </div>
+        <div className="space-y-2">
+          <Label>Season</Label>
+          <Input name="season" placeholder="2025/2026" />
         </div>
         <div className="space-y-2">
           <Label>Period</Label>
@@ -166,12 +163,12 @@ export default function CtroCreateForm({
 
       <CtroLinesForm
         regions={regions}
-        districts={districts}
         depots={depots}
         centers={centers}
         bagWeightKg={bagWeightKg}
         rateCardLines={rateCard?.lines ?? []}
         rateCardStatus={rateCardStatus}
+        headerDate={ctroDate}
       />
 
       <Button type="submit">Save draft</Button>

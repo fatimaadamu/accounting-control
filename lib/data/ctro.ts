@@ -22,7 +22,7 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
   const { data: lines, error: lineError } = await supabaseAdmin()
     .from("ctro_lines")
     .select(
-      "id, district, tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, line_date, bags, tonnage, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
+      "id, depot_id, cocoa_depots ( name ), tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, line_date, bags, tonnage, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
     )
     .eq("ctro_id", ctroId)
     .order("line_date", { ascending: true });

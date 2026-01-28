@@ -31,7 +31,7 @@ export default async function CtroPrintInternalPage({
       <table className="w-full border-collapse border border-zinc-200 text-xs">
         <thead>
           <tr className="bg-zinc-100">
-            <th className="border border-zinc-200 px-2 py-1 text-left">District</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">TOD/Time</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">CTRO Ref</th>
@@ -49,7 +49,11 @@ export default async function CtroPrintInternalPage({
         <tbody>
           {lines.map((line) => (
             <tr key={line.id}>
-              <td className="border border-zinc-200 px-2 py-1">{line.district ?? "-"}</td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {Array.isArray(line.cocoa_depots)
+                  ? line.cocoa_depots[0]?.name ?? "-"
+                  : line.cocoa_depots?.name ?? "-"}
+              </td>
               <td className="border border-zinc-200 px-2 py-1">{line.tod_time ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{line.ctro_ref_no ?? "-"}</td>

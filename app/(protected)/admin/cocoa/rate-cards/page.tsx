@@ -19,6 +19,33 @@ const parseCsv = (raw: string) =>
     .filter(Boolean)
     .map((line) => line.split(",").map((cell) => cell.trim()));
 
+const DEFAULT_DISTRICT_NAME = "General";
+
+const ensureDefaultDistrict = async (regionId: string) => {
+  const { data: existing } = await supabaseAdmin()
+    .from("cocoa_districts")
+    .select("id")
+    .eq("region_id", regionId)
+    .eq("name", DEFAULT_DISTRICT_NAME)
+    .maybeSingle();
+
+  if (existing?.id) {
+    return existing.id;
+  }
+
+  const { data, error } = await supabaseAdmin()
+    .from("cocoa_districts")
+    .insert({ region_id: regionId, name: DEFAULT_DISTRICT_NAME })
+    .select("id")
+    .single();
+
+  if (error || !data?.id) {
+    throw new Error(error?.message ?? "Unable to create default district.");
+  }
+
+  return data.id;
+};
+
 export default async function CocoaRateCardsPage({
   searchParams,
 }: {
@@ -146,17 +173,22 @@ export default async function CocoaRateCardsPage({
     "use server";
     const rateCardIdValue = String(formData.get("rate_card_id") ?? "");
     const regionId = String(formData.get("region_id") ?? "");
-    const districtId = String(formData.get("district_id") ?? "");
     const depotId = String(formData.get("depot_id") ?? "") || null;
     const takeoverCenterId = String(formData.get("takeover_center_id") ?? "");
     const producerPrice = Number(formData.get("producer_price_per_tonne") ?? 0);
     const buyerMargin = Number(formData.get("buyer_margin_per_tonne") ?? 0);
     const secondaryEvac = Number(formData.get("secondary_evac_cost_per_tonne") ?? 0);
-    const takeoverPrice = producerPrice + buyerMargin + secondaryEvac;
+    const takeoverPrice = Number(formData.get("takeover_price_per_tonne") ?? 0);
 
-    if (!rateCardIdValue || !regionId || !districtId || !takeoverCenterId) {
-      throw new Error("Rate card, region, district, and takeover center are required.");
+    if (!rateCardIdValue || !regionId || !takeoverCenterId) {
+      throw new Error("Rate card, region, and takeover center are required.");
     }
+
+    if (producerPrice <= 0 || buyerMargin <= 0 || secondaryEvac <= 0 || takeoverPrice <= 0) {
+      throw new Error("All rate values must be greater than 0.");
+    }
+
+    const districtId = await ensureDefaultDistrict(regionId);
 
     const { error } = await supabaseAdmin()
       .from("cocoa_rate_card_lines")
@@ -205,29 +237,49 @@ export default async function CocoaRateCardsPage({
     }
 
     const regionMap = new Map(regions.map((region) => [region.name.toLowerCase(), region.id]));
-    const districtMap = new Map(districts.map((district) => [district.name.toLowerCase(), district.id]));
-    const depotMap = new Map(depots.map((depot) => [depot.name.toLowerCase(), depot.id]));
+    const districtRegionMap = new Map(
+      districts.map((district) => [district.id, district.region_id])
+    );
+    const depotMap = new Map(
+      depots
+        .map((depot) => {
+          const regionId = districtRegionMap.get(depot.district_id);
+          if (!regionId) {
+            return null;
+          }
+          return [`${regionId}:${depot.name.toLowerCase()}`, depot.id] as const;
+        })
+        .filter((entry): entry is readonly [string, string] => entry !== null)
+    );
     const centerMap = new Map(centers.map((center) => [center.name.toLowerCase(), center.id]));
 
     const rows = parseCsv(csv);
-    const payload = rows.map((cells, index) => {
+    const payload: Array<Record<string, unknown>> = [];
+    const districtMap = new Map<string, string>();
+
+    for (const [index, cells] of rows.entries()) {
       const [
         regionName,
-        districtName,
         depotName,
         centerName,
         producer,
         margin,
         evac,
+        takeover,
       ] = cells;
 
-      const regionId = regionMap.get((regionName ?? "").toLowerCase());
-      const districtId = districtMap.get((districtName ?? "").toLowerCase());
-      const depotId = depotName ? depotMap.get(depotName.toLowerCase()) ?? null : null;
-      const centerId = centerMap.get((centerName ?? "").toLowerCase());
+      const normalizedRegion = (regionName ?? "").trim();
+      const normalizedDepot = (depotName ?? "").trim();
+      const normalizedCenter = (centerName ?? "").trim();
 
-      if (!regionId || !districtId || !centerId) {
-        const message = `CSV row ${index + 1} has invalid region/district/center.`;
+      if (!normalizedRegion || !normalizedDepot || !normalizedCenter) {
+        const missing: string[] = [];
+        if (!normalizedRegion) missing.push("region");
+        if (!normalizedDepot) missing.push("depot");
+        if (!normalizedCenter) missing.push("takeover_center");
+        const message = `Row ${index + 1}: missing ${missing.join(
+          ", "
+        )}. Provide region,depot,center and import Geo first.`;
         const query = new URLSearchParams({
           toast: "error",
           message,
@@ -236,12 +288,54 @@ export default async function CocoaRateCardsPage({
         redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
       }
 
+      const regionId = regionMap.get(normalizedRegion.toLowerCase());
+      const depotKey = regionId && depotName ? `${regionId}:${depotName.toLowerCase()}` : "";
+      const depotId = depotKey ? depotMap.get(depotKey) ?? null : null;
+      const centerId = centerMap.get(normalizedCenter.toLowerCase());
+
+      if (!regionId || !centerId || !depotId) {
+        const missingParts: string[] = [];
+        if (!regionId) missingParts.push(`region "${normalizedRegion}"`);
+        if (!depotId) missingParts.push(`depot "${normalizedDepot}"`);
+        if (!centerId) missingParts.push(`center "${normalizedCenter}"`);
+        const message = `Row ${index + 1}: ${missingParts.join(
+          ", "
+        )} not found. Import Geo first and ensure names match.`;
+        const query = new URLSearchParams({
+          toast: "error",
+          message,
+          rate_card_id: rateCardIdValue,
+        });
+        redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
+      }
+
+      let districtId = districtMap.get(regionId);
+      if (!districtId) {
+        districtId = await ensureDefaultDistrict(regionId);
+        districtMap.set(regionId, districtId);
+      }
+
       const producerPrice = Number(producer ?? 0);
       const buyerMargin = Number(margin ?? 0);
       const secondaryEvac = Number(evac ?? 0);
-      const takeoverPrice = producerPrice + buyerMargin + secondaryEvac;
+      const takeoverPrice = Number(takeover ?? 0);
 
-      return {
+      if (
+        producerPrice <= 0 ||
+        buyerMargin <= 0 ||
+        secondaryEvac <= 0 ||
+        takeoverPrice <= 0
+      ) {
+        const message = `Row ${index + 1}: rates must be > 0 (producer, margin, evac, takeover).`;
+        const query = new URLSearchParams({
+          toast: "error",
+          message,
+          rate_card_id: rateCardIdValue,
+        });
+        redirect(`/admin/cocoa/rate-cards?${query.toString()}`);
+      }
+
+      payload.push({
         rate_card_id: rateCardIdValue,
         region_id: regionId,
         district_id: districtId,
@@ -251,8 +345,8 @@ export default async function CocoaRateCardsPage({
         buyer_margin_per_tonne: buyerMargin,
         secondary_evac_cost_per_tonne: secondaryEvac,
         takeover_price_per_tonne: takeoverPrice,
-      };
-    });
+      });
+    }
 
     const { error } = await supabaseAdmin().from("cocoa_rate_card_lines").insert(payload);
     if (error) {
@@ -367,17 +461,6 @@ export default async function CocoaRateCardsPage({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>District</Label>
-                  <Select name="district_id" required>
-                    <option value="">Select district</option>
-                    {districts?.map((district) => (
-                      <option key={district.id} value={district.id}>
-                        {district.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label>Depot (optional)</Label>
                   <Select name="depot_id">
                     <option value="">Select depot</option>
@@ -411,29 +494,45 @@ export default async function CocoaRateCardsPage({
                   <Label>Secondary evac / tonne</Label>
                   <Input name="secondary_evac_cost_per_tonne" type="number" step="0.01" required />
                 </div>
+                <div className="space-y-2">
+                  <Label>Takeover price / tonne</Label>
+                  <Input name="takeover_price_per_tonne" type="number" step="0.01" required />
+                </div>
                 <div className="md:col-span-4">
                   <Button type="submit">Add line</Button>
                 </div>
               </form>
 
-              <form action={importCsvAction} className="space-y-3 rounded-md border border-zinc-200 p-4">
-                <input type="hidden" name="rate_card_id" value={rateCardId} />
-                <Label>CSV import (region,district,depot(optional),center,producer,margin,evac)</Label>
-                <textarea
-                  name="csv"
-                  className="min-h-[140px] w-full rounded-md border border-zinc-200 p-3 text-sm"
-                  placeholder="Region,District,Depot,Center,Producer,Margin,Evac"
-                />
-                <Button type="submit" variant="outline">
-                  Import CSV
-                </Button>
-              </form>
+              <details className="rounded-md border border-zinc-200 p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-zinc-800">
+                  Bulk Import (CSV)
+                </summary>
+                <form action={importCsvAction} className="space-y-3 pt-3">
+                  <input type="hidden" name="rate_card_id" value={rateCardId} />
+                  <div className="flex items-center justify-between">
+                    <Label>CSV import</Label>
+                    <details className="text-xs text-zinc-500">
+                      <summary className="cursor-pointer">Template</summary>
+                      <div className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 font-mono">
+                        region,depot,center,producer,margin,evac,takeover
+                      </div>
+                    </details>
+                  </div>
+                  <textarea
+                    name="csv"
+                    className="min-h-[140px] w-full rounded-md border border-zinc-200 p-3 text-sm"
+                    placeholder="Region,Depot,Center,Producer,Margin,Evac,Takeover"
+                  />
+                  <Button type="submit" variant="outline">
+                    Import CSV
+                  </Button>
+                </form>
+              </details>
 
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Region</TableHead>
-                    <TableHead>District</TableHead>
                     <TableHead>Depot</TableHead>
                     <TableHead>Center</TableHead>
                     <TableHead>Producer</TableHead>
@@ -446,7 +545,7 @@ export default async function CocoaRateCardsPage({
                 <TableBody>
                   {(lines ?? []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-sm text-zinc-500">
+                      <TableCell colSpan={8} className="text-sm text-zinc-500">
                         No lines yet.
                       </TableCell>
                     </TableRow>
@@ -454,7 +553,6 @@ export default async function CocoaRateCardsPage({
                     lines?.map((line) => (
                       <TableRow key={line.id}>
                         <TableCell>{regions?.find((r) => r.id === line.region_id)?.name ?? "-"}</TableCell>
-                        <TableCell>{districts?.find((d) => d.id === line.district_id)?.name ?? "-"}</TableCell>
                         <TableCell>{depots?.find((d) => d.id === line.depot_id)?.name ?? "-"}</TableCell>
                         <TableCell>{centers?.find((c) => c.id === line.takeover_center_id)?.name ?? "-"}</TableCell>
                         <TableCell>{Number(line.producer_price_per_tonne ?? 0).toFixed(2)}</TableCell>

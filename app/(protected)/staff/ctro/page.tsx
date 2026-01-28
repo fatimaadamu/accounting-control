@@ -114,15 +114,6 @@ export default async function CtroPage({
     throw new Error(regionError.message);
   }
 
-  const { data: districts, error: districtError } = await supabaseAdmin()
-    .from("cocoa_districts")
-    .select("id, name, region_id")
-    .order("name");
-
-  if (districtError) {
-    throw new Error(districtError.message);
-  }
-
   const { data: depots, error: depotError } = await supabaseAdmin()
     .from("cocoa_depots")
     .select("id, name, district_id")
@@ -131,6 +122,23 @@ export default async function CtroPage({
   if (depotError) {
     throw new Error(depotError.message);
   }
+
+  const { data: districts, error: districtError } = await supabaseAdmin()
+    .from("cocoa_districts")
+    .select("id, region_id");
+
+  if (districtError) {
+    throw new Error(districtError.message);
+  }
+
+  const districtRegionMap = new Map(
+    (districts ?? []).map((district) => [district.id, district.region_id])
+  );
+  const depotsWithRegion = (depots ?? []).map((depot) => ({
+    id: depot.id,
+    name: depot.name,
+    region_id: districtRegionMap.get(depot.district_id) ?? "",
+  }));
 
   const { data: centers, error: centerError } = await supabaseAdmin()
     .from("takeover_centers")
@@ -170,11 +178,45 @@ export default async function CtroPage({
     const lines = JSON.parse(linesJson) as Array<Record<string, string>>;
 
     if (!ctroDate || !periodId) {
-      throw new Error("CTRO date and period are required.");
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "CTRO date and period are required."
+        )}`
+      );
     }
 
     if (evacuationMode === "cash" && !cashAccountId) {
-      throw new Error("Select a Cash/Bank account for evacuation payment.");
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "Select a Cash/Bank account for evacuation payment."
+        )}`
+      );
+    }
+
+    if (
+      !lines.length ||
+      lines.some((line) => Number(line.bags ?? 0) <= 0)
+    ) {
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "Each CTRO line must include bags greater than 0."
+        )}`
+      );
+    }
+
+    if (
+      lines.some(
+        (line) =>
+          line.region_id &&
+          line.takeover_center_id &&
+          Number(line.applied_takeover_price_per_tonne ?? 0) <= 0
+      )
+    ) {
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "No matching rate line for selected region/depot/center."
+        )}`
+      );
     }
 
     try {
@@ -189,15 +231,12 @@ export default async function CtroPage({
         evacuation_payment_mode: evacuationMode,
         evacuation_cash_account_id: cashAccountId || null,
         lines: lines.map((line) => ({
-          district: line.district,
           tod_time: line.tod_time,
           waybill_no: line.waybill_no,
           ctro_ref_no: line.ctro_ref_no,
           cwc: line.cwc,
           purity_cert_no: line.purity_cert_no,
-          line_date: line.line_date,
           region_id: line.region_id,
-          district_id: line.district_id,
           depot_id: line.depot_id || null,
           takeover_center_id: line.takeover_center_id,
           bag_weight_kg: Number(line.bag_weight_kg) || 64,
@@ -333,8 +372,7 @@ export default async function CtroPage({
               agents={agents ?? []}
               accounts={accounts ?? []}
               regions={regions ?? []}
-              districts={districts ?? []}
-              depots={depots ?? []}
+              depots={depotsWithRegion}
               centers={centers ?? []}
             />
           )}

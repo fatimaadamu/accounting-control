@@ -6,17 +6,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import AccordionPanels from "@/components/accordion-panels";
 import ToastMessage from "@/components/toast-message";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const defaultCenters = ["Tema", "Takoradi", "Kaase"];
+const DEFAULT_DISTRICT_NAME = "General";
 const parseCsv = (raw: string) =>
   raw
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => line.split(",").map((cell) => cell.trim()));
+
+const ensureDefaultDistrict = async (regionId: string) => {
+  const { data: existing } = await supabaseAdmin()
+    .from("cocoa_districts")
+    .select("id")
+    .eq("region_id", regionId)
+    .eq("name", DEFAULT_DISTRICT_NAME)
+    .maybeSingle();
+
+  if (existing?.id) {
+    return existing.id;
+  }
+
+  const { data, error } = await supabaseAdmin()
+    .from("cocoa_districts")
+    .insert({ region_id: regionId, name: DEFAULT_DISTRICT_NAME })
+    .select("id")
+    .single();
+
+  if (error || !data?.id) {
+    throw new Error(error?.message ?? "Unable to create default district.");
+  }
+
+  return data.id;
+};
 
 export default async function CocoaGeoPage({
   searchParams,
@@ -100,29 +127,14 @@ export default async function CocoaGeoPage({
     revalidatePath("/admin/cocoa/geo");
   }
 
-  async function createDistrict(formData: FormData) {
-    "use server";
-    const regionId = String(formData.get("region_id") ?? "");
-    const name = String(formData.get("district_name") ?? "").trim();
-    if (!regionId || !name) {
-      throw new Error("Region and district name are required.");
-    }
-    const { error } = await supabaseAdmin()
-      .from("cocoa_districts")
-      .insert({ region_id: regionId, name });
-    if (error) {
-      throw new Error(error.message);
-    }
-    revalidatePath("/admin/cocoa/geo");
-  }
-
   async function createDepot(formData: FormData) {
     "use server";
-    const districtId = String(formData.get("district_id") ?? "");
+    const regionId = String(formData.get("region_id") ?? "");
     const name = String(formData.get("depot_name") ?? "").trim();
-    if (!districtId || !name) {
-      throw new Error("District and depot name are required.");
+    if (!regionId || !name) {
+      throw new Error("Region and depot name are required.");
     }
+    const districtId = await ensureDefaultDistrict(regionId);
     const { error } = await supabaseAdmin()
       .from("cocoa_depots")
       .insert({ district_id: districtId, name });
@@ -162,18 +174,22 @@ export default async function CocoaGeoPage({
     const normalize = (value: string) => value.trim();
     const regionNames = new Set<string>();
     const centerNames = new Set<string>();
-    const districtKeys = new Set<string>();
     const depotKeys = new Set<string>();
 
     const parsedRows = rows.map((cells, index) => {
-      const [region, district, depot, center] = cells;
+      const [region, depot, center] = cells;
       const regionName = normalize(region ?? "");
-      const districtName = normalize(district ?? "");
       const depotName = normalize(depot ?? "");
       const centerName = normalize(center ?? "");
 
-      if (!regionName || !districtName || !depotName || !centerName) {
-        errors.push(`Row ${index + 1}: region, district, depot, center are required.`);
+      if (!regionName || !depotName || !centerName) {
+        const missing: string[] = [];
+        if (!regionName) missing.push("region");
+        if (!depotName) missing.push("depot");
+        if (!centerName) missing.push("takeover_center");
+        errors.push(
+          `Row ${index + 1}: missing ${missing.join(", ")}. Provide all fields (region,depot,takeover_center).`
+        );
       } else {
         regionNames.add(regionName);
         centerNames.add(centerName);
@@ -182,7 +198,6 @@ export default async function CocoaGeoPage({
       return {
         index: index + 1,
         regionName,
-        districtName,
         depotName,
         centerName,
       };
@@ -227,51 +242,41 @@ export default async function CocoaGeoPage({
 
     const regionMap = new Map(regionRows.map((row) => [row.name.toLowerCase(), row.id]));
     const centerMap = new Map(centerRows.map((row) => [row.name.toLowerCase(), row.id]));
+    const defaultDistrictMap = new Map<string, string>();
 
-    const districtPayload: Array<{ region_id: string; name: string }> = [];
     for (const row of parsedRows) {
       const regionId = regionMap.get(row.regionName.toLowerCase());
       if (!regionId) {
-        errors.push(`Row ${row.index}: region not found after import.`);
+        errors.push(
+          `Row ${row.index}: region "${row.regionName}" not found after import. Check spelling or import regions first.`
+        );
         continue;
       }
-      const key = `${regionId}:${row.districtName.toLowerCase()}`;
-      if (!districtKeys.has(key)) {
-        districtKeys.add(key);
-        districtPayload.push({ region_id: regionId, name: row.districtName });
+      if (!defaultDistrictMap.has(regionId)) {
+        const districtId = await ensureDefaultDistrict(regionId);
+        defaultDistrictMap.set(regionId, districtId);
       }
       if (!centerMap.get(row.centerName.toLowerCase())) {
-        errors.push(`Row ${row.index}: takeover center not found after import.`);
+        errors.push(
+          `Row ${row.index}: takeover center "${row.centerName}" not found after import. Add it or include it in the CSV.`
+        );
       }
     }
-
-    if (districtPayload.length > 0) {
-      await supabaseAdmin().from("cocoa_districts").upsert(districtPayload, {
-        onConflict: "region_id,name",
-        ignoreDuplicates: true,
-      });
-    }
-
-    const { data: districtRows, error: districtError } = await supabaseAdmin()
-      .from("cocoa_districts")
-      .select("id, name, region_id");
-    if (districtError) {
-      throw new Error(districtError.message);
-    }
-    const districtMap = new Map(
-      districtRows.map((row) => [`${row.region_id}:${row.name.toLowerCase()}`, row.id])
-    );
 
     const depotPayload: Array<{ district_id: string; name: string }> = [];
     for (const row of parsedRows) {
       const regionId = regionMap.get(row.regionName.toLowerCase());
       if (!regionId) {
-        errors.push(`Row ${row.index}: region not found after import.`);
+        errors.push(
+          `Row ${row.index}: region "${row.regionName}" not found after import. Check spelling or import regions first.`
+        );
         continue;
       }
-      const districtId = districtMap.get(`${regionId}:${row.districtName.toLowerCase()}`);
+      const districtId = defaultDistrictMap.get(regionId);
       if (!districtId) {
-        errors.push(`Row ${row.index}: district not found after import.`);
+        errors.push(
+          `Row ${row.index}: unable to create default district for "${row.regionName}".`
+        );
         continue;
       }
       const key = `${districtId}:${row.depotName.toLowerCase()}`;
@@ -305,16 +310,6 @@ export default async function CocoaGeoPage({
     "use server";
     const id = String(formData.get("region_id") ?? "");
     const { error } = await supabaseAdmin().from("cocoa_regions").delete().eq("id", id);
-    if (error) {
-      throw new Error(error.message);
-    }
-    revalidatePath("/admin/cocoa/geo");
-  }
-
-  async function deleteDistrict(formData: FormData) {
-    "use server";
-    const id = String(formData.get("district_id") ?? "");
-    const { error } = await supabaseAdmin().from("cocoa_districts").delete().eq("id", id);
     if (error) {
       throw new Error(error.message);
     }
@@ -365,252 +360,228 @@ export default async function CocoaGeoPage({
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Import / Paste CSV</CardTitle>
-          <CardDescription>
-            Format: region,district,depot,takeover_center
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <form action={importCsvAction} className="space-y-3">
-            <textarea
-              name="csv"
-              className="min-h-[140px] w-full rounded-md border border-zinc-200 p-3 text-sm"
-              placeholder="Ashanti,Kumasi Depot,Depot A,Tema"
-            />
-            <Button type="submit" variant="outline">
-              Import CSV
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <details className="rounded-md border border-zinc-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-800">
+          Bulk Import (CSV)
+        </summary>
+        <div className="pt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Import / Paste CSV</CardTitle>
+              <CardDescription>
+                Format: region,depot,takeover_center
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <form action={importCsvAction} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>CSV data</Label>
+                  <details className="text-xs text-zinc-500">
+                    <summary className="cursor-pointer">Template</summary>
+                    <div className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 font-mono">
+                      region,depot,takeover_center
+                    </div>
+                  </details>
+                </div>
+                <textarea
+                  name="csv"
+                  className="min-h-[140px] w-full rounded-md border border-zinc-200 p-3 text-sm"
+                  placeholder="Ashanti,Depot A,Tema"
+                />
+                <Button type="submit" variant="outline">
+                  Import CSV
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </details>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Regions</CardTitle>
-          <CardDescription>Manage cocoa regions.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form action={createRegion} className="flex flex-wrap gap-3">
-            <div className="min-w-[220px] flex-1">
-              <Label htmlFor="region_name">Region name</Label>
-              <Input id="region_name" name="region_name" required />
-            </div>
-            <div className="self-end">
-              <Button type="submit">Add region</Button>
-            </div>
-          </form>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {regions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-sm text-zinc-500">
-                    No regions yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                regions.map((region) => (
-                  <TableRow key={region.id}>
-                    <TableCell>{region.name}</TableCell>
-                    <TableCell>
-                      <form action={deleteRegion}>
-                        <input type="hidden" name="region_id" value={region.id} />
-                        <Button type="submit" variant="ghost">
-                          Delete
-                        </Button>
-                      </form>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Districts</CardTitle>
-          <CardDescription>Assign districts to regions.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form action={createDistrict} className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Region</Label>
-              <select name="region_id" className="h-10 w-full rounded-md border border-zinc-200 px-3" required>
-                <option value="">Select region</option>
-                {regions.map((region) => (
-                  <option key={region.id} value={region.id}>
-                    {region.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="district_name">District name</Label>
-              <Input id="district_name" name="district_name" required />
-            </div>
-            <div className="self-end">
-              <Button type="submit">Add district</Button>
-            </div>
-          </form>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>District</TableHead>
-                <TableHead>Region</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {districts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-sm text-zinc-500">
-                    No districts yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                districts.map((district) => (
-                  <TableRow key={district.id}>
-                    <TableCell>{district.name}</TableCell>
-                    <TableCell>
-                      {regions.find((region) => region.id === district.region_id)?.name ?? "-"}
-                    </TableCell>
-                    <TableCell>
-                      <form action={deleteDistrict}>
-                        <input type="hidden" name="district_id" value={district.id} />
-                        <Button type="submit" variant="ghost">
-                          Delete
-                        </Button>
-                      </form>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Depots</CardTitle>
-          <CardDescription>Assign depots to districts.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form action={createDepot} className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>District</Label>
-              <select name="district_id" className="h-10 w-full rounded-md border border-zinc-200 px-3" required>
-                <option value="">Select district</option>
-                {districts.map((district) => (
-                  <option key={district.id} value={district.id}>
-                    {district.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="depot_name">Depot name</Label>
-              <Input id="depot_name" name="depot_name" required />
-            </div>
-            <div className="self-end">
-              <Button type="submit">Add depot</Button>
-            </div>
-          </form>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Depot</TableHead>
-                <TableHead>District</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {depots.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-sm text-zinc-500">
-                    No depots yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                depots.map((depot) => (
-                  <TableRow key={depot.id}>
-                    <TableCell>{depot.name}</TableCell>
-                    <TableCell>
-                      {districts.find((district) => district.id === depot.district_id)?.name ?? "-"}
-                    </TableCell>
-                    <TableCell>
-                      <form action={deleteDepot}>
-                        <input type="hidden" name="depot_id" value={depot.id} />
-                        <Button type="submit" variant="ghost">
-                          Delete
-                        </Button>
-                      </form>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Takeover Centers</CardTitle>
-          <CardDescription>Manage takeover centers (Tema, Takoradi, Kaase).</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form action={createCenter} className="flex flex-wrap gap-3">
-            <div className="min-w-[220px] flex-1">
-              <Label htmlFor="center_name">Center name</Label>
-              <Input id="center_name" name="center_name" required />
-            </div>
-            <div className="self-end">
-              <Button type="submit">Add center</Button>
-            </div>
-          </form>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(centers ?? []).length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-sm text-zinc-500">
-                    No centers yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                centers?.map((center) => (
-                  <TableRow key={center.id}>
-                    <TableCell>{center.name}</TableCell>
-                    <TableCell>
-                      <form action={deleteCenter}>
-                        <input type="hidden" name="center_id" value={center.id} />
-                        <Button type="submit" variant="ghost">
-                          Delete
-                        </Button>
-                      </form>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <AccordionPanels
+        items={[
+          {
+            id: "centers",
+            title: "Takeover Centers",
+            defaultOpen: true,
+            children: (
+              <div className="space-y-4">
+                <p className="text-sm text-zinc-600">
+                  Manage takeover centers (Tema, Takoradi, Kaase).
+                </p>
+                <form action={createCenter} className="flex flex-wrap gap-3">
+                  <div className="min-w-[220px] flex-1">
+                    <Label htmlFor="center_name">Center name</Label>
+                    <Input id="center_name" name="center_name" required />
+                  </div>
+                  <div className="self-end">
+                    <Button type="submit">Add center</Button>
+                  </div>
+                </form>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(centers ?? []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-sm text-zinc-500">
+                          No centers yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      centers?.map((center) => (
+                        <TableRow key={center.id}>
+                          <TableCell>{center.name}</TableCell>
+                          <TableCell>
+                            <form action={deleteCenter}>
+                              <input type="hidden" name="center_id" value={center.id} />
+                              <Button type="submit" variant="ghost">
+                                Delete
+                              </Button>
+                            </form>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ),
+          },
+          {
+            id: "regions",
+            title: "Regions",
+            defaultOpen: true,
+            children: (
+              <div className="space-y-4">
+                <p className="text-sm text-zinc-600">Manage cocoa regions.</p>
+                <form action={createRegion} className="flex flex-wrap gap-3">
+                  <div className="min-w-[220px] flex-1">
+                    <Label htmlFor="region_name">Region name</Label>
+                    <Input id="region_name" name="region_name" required />
+                  </div>
+                  <div className="self-end">
+                    <Button type="submit">Add region</Button>
+                  </div>
+                </form>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {regions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-sm text-zinc-500">
+                          No regions yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      regions.map((region) => (
+                        <TableRow key={region.id}>
+                          <TableCell>{region.name}</TableCell>
+                          <TableCell>
+                            <form action={deleteRegion}>
+                              <input type="hidden" name="region_id" value={region.id} />
+                              <Button type="submit" variant="ghost">
+                                Delete
+                              </Button>
+                            </form>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ),
+          },
+          {
+            id: "depots",
+            title: "Depots",
+            children: (
+              <div className="space-y-4">
+                <p className="text-sm text-zinc-600">Assign depots to regions.</p>
+                <form action={createDepot} className="grid gap-3 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Region</Label>
+                    <select
+                      name="region_id"
+                      className="h-10 w-full rounded-md border border-zinc-200 px-3"
+                      required
+                    >
+                      <option value="">Select region</option>
+                      {regions.map((region) => (
+                        <option key={region.id} value={region.id}>
+                          {region.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="depot_name">Depot name</Label>
+                    <Input id="depot_name" name="depot_name" required />
+                  </div>
+                  <div className="self-end">
+                    <Button type="submit">Add depot</Button>
+                  </div>
+                </form>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Depot</TableHead>
+                      <TableHead>Region</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {depots.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-sm text-zinc-500">
+                          No depots yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      depots.map((depot) => (
+                        <TableRow key={depot.id}>
+                          <TableCell>{depot.name}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const district = districts.find(
+                                (item) => item.id === depot.district_id
+                              );
+                              if (!district) {
+                                return "-";
+                              }
+                              return (
+                                regions.find((region) => region.id === district.region_id)
+                                  ?.name ?? "-"
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            <form action={deleteDepot}>
+                              <input type="hidden" name="depot_id" value={depot.id} />
+                              <Button type="submit" variant="ghost">
+                                Delete
+                              </Button>
+                            </form>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

@@ -159,7 +159,7 @@ export default async function CtroDetailPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>District</TableHead>
+                <TableHead>Depot</TableHead>
                 <TableHead>Waybill</TableHead>
                 <TableHead>CTRO Ref</TableHead>
                 <TableHead>Bags</TableHead>
@@ -180,7 +180,11 @@ export default async function CtroDetailPage({
               ) : (
                 lines.map((line) => (
                   <TableRow key={line.id}>
-                    <TableCell>{line.district ?? "-"}</TableCell>
+                    <TableCell>
+                      {Array.isArray(line.cocoa_depots)
+                        ? line.cocoa_depots[0]?.name ?? "-"
+                        : line.cocoa_depots?.name ?? "-"}
+                    </TableCell>
                     <TableCell>{line.waybill_no ?? "-"}</TableCell>
                     <TableCell>{line.ctro_ref_no ?? "-"}</TableCell>
                     <TableCell>{line.bags ?? 0}</TableCell>

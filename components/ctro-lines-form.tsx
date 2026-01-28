@@ -9,9 +9,7 @@ import { Select } from "@/components/ui/select";
 
 type Option = { id: string; name: string };
 
-type DistrictOption = Option & { region_id: string };
-
-type DepotOption = Option & { district_id: string };
+type DepotOption = Option & { region_id: string };
 
 type RateCardLine = {
   region_id: string;
@@ -26,16 +24,13 @@ type RateCardLine = {
 
 type CtroLine = {
   region_id: string;
-  district_id: string;
   depot_id: string;
   takeover_center_id: string;
-  district: string;
   tod_time: string;
   waybill_no: string;
   ctro_ref_no: string;
   cwc: string;
   purity_cert_no: string;
-  line_date: string;
   bags: string;
   bag_weight_kg: string;
   tonnage: string;
@@ -53,12 +48,12 @@ type CtroLine = {
 type CtroLinesFormProps = {
   fieldName?: string;
   regions: Option[];
-  districts: DistrictOption[];
   depots: DepotOption[];
   centers: Option[];
   bagWeightKg: number;
   rateCardLines: RateCardLine[];
   rateCardStatus: "ready" | "missing" | "loading";
+  headerDate?: string;
 };
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -66,16 +61,13 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
 const emptyLine = (bagWeightKg: number): CtroLine => ({
   region_id: "",
-  district_id: "",
   depot_id: "",
   takeover_center_id: "",
-  district: "",
   tod_time: "",
   waybill_no: "",
   ctro_ref_no: "",
   cwc: "",
   purity_cert_no: "",
-  line_date: "",
   bags: "",
   bag_weight_kg: bagWeightKg.toString(),
   tonnage: "",
@@ -100,23 +92,19 @@ const formatNumber = (value: number, decimals = 2) => {
 export default function CtroLinesForm({
   fieldName = "lines_json",
   regions,
-  districts,
   depots,
   centers,
   bagWeightKg,
   rateCardLines,
   rateCardStatus,
+  headerDate,
 }: CtroLinesFormProps) {
   const [lines, setLines] = React.useState<CtroLine[]>([emptyLine(bagWeightKg)]);
-
-  const resolveDistrictName = React.useCallback(
-    (districtId: string) => districts.find((item) => item.id === districtId)?.name ?? "",
-    [districts]
-  );
+  const canEditLines = Boolean(headerDate);
 
   const findRateCardLine = React.useCallback(
     (line: CtroLine) => {
-      if (!line.region_id || !line.district_id || !line.takeover_center_id) {
+      if (!line.region_id || !line.takeover_center_id) {
         return null;
       }
 
@@ -124,7 +112,6 @@ export default function CtroLinesForm({
       const exact = rateCardLines.find(
         (item) =>
           item.region_id === line.region_id &&
-          item.district_id === line.district_id &&
           (item.depot_id ?? null) === depotId &&
           item.takeover_center_id === line.takeover_center_id
       );
@@ -138,7 +125,6 @@ export default function CtroLinesForm({
           rateCardLines.find(
             (item) =>
               item.region_id === line.region_id &&
-              item.district_id === line.district_id &&
               item.depot_id == null &&
               item.takeover_center_id === line.takeover_center_id
           ) ?? null
@@ -191,9 +177,6 @@ export default function CtroLinesForm({
           return line;
         }
         const next = { ...line, ...update };
-        if (update.district_id !== undefined) {
-          next.district = resolveDistrictName(update.district_id);
-        }
         return recalcLine(next);
       })
     );
@@ -239,22 +222,32 @@ export default function CtroLinesForm({
 
   return (
     <div className="space-y-4">
-      <input type="hidden" name={fieldName} value={JSON.stringify(lines)} />
+      <input
+        type="hidden"
+        name={fieldName}
+        value={JSON.stringify(canEditLines ? lines : [])}
+      />
 
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-700">CTRO Lines</h3>
-        <Button type="button" variant="secondary" onClick={addLine}>
+        <Button type="button" variant="secondary" onClick={addLine} disabled={!canEditLines}>
           Add line
         </Button>
       </div>
 
-      {rateCardStatus === "loading" && (
+      {!canEditLines && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Select CTRO Date to apply rate card.
+        </div>
+      )}
+
+      {canEditLines && rateCardStatus === "loading" && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Loading rate card...
         </div>
       )}
 
-      {rateCardStatus === "missing" && (
+      {canEditLines && rateCardStatus === "missing" && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           No rate card found for this date. Please add a rate card in Admin.
         </div>
@@ -289,15 +282,21 @@ export default function CtroLinesForm({
 
       <div className="space-y-3">
         {lines.map((line, index) => {
-          const availableDistricts = districts.filter(
-            (district) => district.region_id === line.region_id
-          );
           const availableDepots = depots.filter(
-            (depot) => depot.district_id === line.district_id
+            (depot) => depot.region_id === line.region_id
           );
+          const hasSelections = Boolean(line.region_id && line.takeover_center_id);
+          const matchedRate = findRateCardLine(line);
+          const showMissingRate =
+            canEditLines && rateCardStatus === "ready" && hasSelections && !matchedRate;
 
           return (
             <div key={`ctro-line-${index}`} className="rounded-md border border-zinc-200 p-4">
+              {showMissingRate && (
+                <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  No matching rate line for selected region/depot/center.
+                </div>
+              )}
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="space-y-1">
                   <Label>Region</Label>
@@ -306,12 +305,11 @@ export default function CtroLinesForm({
                     onChange={(event) =>
                       updateLine(index, {
                         region_id: event.target.value,
-                        district_id: "",
                         depot_id: "",
                         takeover_center_id: "",
-                        district: "",
                       })
                     }
+                    disabled={!canEditLines}
                   >
                     <option value="">Select region</option>
                     {regions.map((region) => (
@@ -322,29 +320,11 @@ export default function CtroLinesForm({
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>District</Label>
-                  <Select
-                    value={line.district_id}
-                    onChange={(event) =>
-                      updateLine(index, {
-                        district_id: event.target.value,
-                        depot_id: "",
-                      })
-                    }
-                  >
-                    <option value="">Select district</option>
-                    {availableDistricts.map((district) => (
-                      <option key={district.id} value={district.id}>
-                        {district.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-1">
                   <Label>Depot (optional)</Label>
                   <Select
                     value={line.depot_id}
                     onChange={(event) => updateLine(index, { depot_id: event.target.value })}
+                    disabled={!canEditLines}
                   >
                     <option value="">Select depot</option>
                     {availableDepots.map((depot) => (
@@ -359,6 +339,7 @@ export default function CtroLinesForm({
                   <Select
                     value={line.takeover_center_id}
                     onChange={(event) => updateLine(index, { takeover_center_id: event.target.value })}
+                    disabled={!canEditLines}
                   >
                     <option value="">Select center</option>
                     {centers.map((center) => (
@@ -370,31 +351,55 @@ export default function CtroLinesForm({
                 </div>
                 <div className="space-y-1">
                   <Label>TOD/Time</Label>
-                  <Input value={line.tod_time} onChange={(event) => updateLine(index, { tod_time: event.target.value })} />
+                  <Input
+                    value={line.tod_time}
+                    onChange={(event) => updateLine(index, { tod_time: event.target.value })}
+                    disabled={!canEditLines}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>Waybill</Label>
-                  <Input value={line.waybill_no} onChange={(event) => updateLine(index, { waybill_no: event.target.value })} />
+                  <Input
+                    value={line.waybill_no}
+                    onChange={(event) => updateLine(index, { waybill_no: event.target.value })}
+                    disabled={!canEditLines}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>CTRO Ref No</Label>
-                  <Input value={line.ctro_ref_no} onChange={(event) => updateLine(index, { ctro_ref_no: event.target.value })} />
+                  <Input
+                    value={line.ctro_ref_no}
+                    onChange={(event) => updateLine(index, { ctro_ref_no: event.target.value })}
+                    disabled={!canEditLines}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>CWC</Label>
-                  <Input value={line.cwc} onChange={(event) => updateLine(index, { cwc: event.target.value })} />
+                  <Input
+                    value={line.cwc}
+                    onChange={(event) => updateLine(index, { cwc: event.target.value })}
+                    disabled={!canEditLines}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>Purity Cert No</Label>
-                  <Input value={line.purity_cert_no} onChange={(event) => updateLine(index, { purity_cert_no: event.target.value })} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Date</Label>
-                  <Input type="date" value={line.line_date} onChange={(event) => updateLine(index, { line_date: event.target.value })} />
+                  <Input
+                    value={line.purity_cert_no}
+                    onChange={(event) => updateLine(index, { purity_cert_no: event.target.value })}
+                    disabled={!canEditLines}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>Bags</Label>
-                  <Input inputMode="numeric" value={line.bags} onChange={(event) => updateLine(index, { bags: event.target.value })} />
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    required
+                    value={line.bags}
+                    onChange={(event) => updateLine(index, { bags: event.target.value })}
+                    disabled={!canEditLines}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>Tonnage</Label>
@@ -431,6 +436,7 @@ export default function CtroLinesForm({
                     onChange={(event) =>
                       updateLine(index, { evacuation_treatment: event.target.value as CtroLine["evacuation_treatment"] })
                     }
+                    disabled={!canEditLines}
                   >
                     <option value="company_paid">Company paid</option>
                     <option value="deducted">Deducted</option>
@@ -443,7 +449,12 @@ export default function CtroLinesForm({
               </div>
               {lines.length > 1 && (
                 <div className="mt-3">
-                  <Button type="button" variant="ghost" onClick={() => removeLine(index)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => removeLine(index)}
+                    disabled={!canEditLines}
+                  >
                     Remove line
                   </Button>
                 </div>
