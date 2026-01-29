@@ -1,3 +1,4 @@
+import PrintButton from "@/components/print-button";
 import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
@@ -85,12 +86,16 @@ export default async function CtroPrintCocoaBodPage({
     grandTotal: totals?.grand_total ?? totalsFromLines.grandTotal,
   };
 
+  const companyName =
+    (header.company as { name?: string } | null)?.name ??
+    (header.company_id ? `Company ${header.company_id}` : "-");
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6 text-sm text-zinc-800">
       <style>{`
         @page {
-          size: A4;
-          margin: 16mm;
+          size: A4 landscape;
+          margin: 10mm;
         }
         @media print {
           .print-hidden {
@@ -99,12 +104,34 @@ export default async function CtroPrintCocoaBodPage({
           body {
             margin: 0;
           }
+          thead {
+            display: table-header-group;
+          }
+          tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          th,
+          td {
+            padding: 3px 6px !important;
+          }
         }
       `}</style>
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
-        <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
-        <p className="text-sm font-medium">DATE: {formatDate(header.ctro_date)}</p>
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
+          <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
+          <p className="text-sm font-medium">COCOA TAKEN OVER RECEIPT (CTRO)</p>
+          <div className="pt-2 text-xs text-zinc-700">
+            <div>CTRO No: {header.ctro_no}</div>
+            <div>Date: {formatDate(header.ctro_date)}</div>
+            <div>Season: {header.season ?? "-"}</div>
+            <div>Company: {companyName}</div>
+          </div>
+        </div>
+        <div className="print-hidden">
+          <PrintButton />
+        </div>
       </div>
 
       <table className="w-full border-collapse border border-zinc-200 text-xs">
@@ -133,10 +160,10 @@ export default async function CtroPrintCocoaBodPage({
               Buyer Margin Value
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Take-over Price / Tonne
+              Take-over / Tonne
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Total
+              Line Total
             </th>
           </tr>
         </thead>
