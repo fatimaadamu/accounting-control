@@ -2,6 +2,30 @@
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+type CtroLine = {
+  id: string;
+  depot_id: string | null;
+  depot?: { name?: string }[] | { name?: string } | null;
+  center?: { name?: string }[] | { name?: string } | null;
+  tod_time: string | null;
+  waybill_no: string | null;
+  ctro_ref_no: string | null;
+  cwc: string | null;
+  purity_cert_no: string | null;
+  line_date: string | null;
+  bags: number | null;
+  tonnage: number | null;
+  applied_producer_price_per_tonne: number | null;
+  applied_buyer_margin_per_tonne: number | null;
+  applied_secondary_evac_cost_per_tonne: number | null;
+  applied_takeover_price_per_tonne: number | null;
+  producer_price_value: number | null;
+  buyers_margin_value: number | null;
+  evacuation_cost: number | null;
+  evacuation_treatment: string | null;
+  line_total: number | null;
+};
+
 export const getCtroById = async (ctroId: string, companyId?: string) => {
   if (!ctroId || ctroId === "undefined") {
     throw new Error("CTRO not found.");
@@ -34,8 +58,30 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
     .eq("ctro_id", ctroId)
     .order("line_date", { ascending: true });
 
+  let safeLines: CtroLine[] = (lines ?? []) as CtroLine[];
+  let lineErrorMessage: string | null = null;
+
   if (lineError) {
-    throw new Error(`Unable to load CTRO lines: ${lineError.message}`);
+    lineErrorMessage = lineError.message;
+    const { data: fallbackLines, error: fallbackError } = await supabaseAdmin()
+      .from("ctro_lines")
+      .select(
+        "id, depot_id, takeover_center_id, tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, line_date, bags, tonnage, applied_producer_price_per_tonne, applied_buyer_margin_per_tonne, applied_secondary_evac_cost_per_tonne, applied_takeover_price_per_tonne, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
+      )
+      .eq("ctro_id", ctroId)
+      .order("line_date", { ascending: true });
+
+    if (!fallbackError) {
+      safeLines = (fallbackLines ?? []).map((line) => ({
+        ...(line as CtroLine),
+        depot: null,
+        center: null,
+      }));
+    } else if (!lineErrorMessage) {
+      lineErrorMessage = fallbackError.message;
+    } else {
+      lineErrorMessage = `${lineErrorMessage}; ${fallbackError.message}`;
+    }
   }
 
   const { data: totals } = await supabaseAdmin()
@@ -46,5 +92,5 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
     .eq("ctro_id", ctroId)
     .maybeSingle();
 
-  return { header, lines: lines ?? [], totals };
+  return { header, lines: safeLines, totals, lineErrorMessage };
 };

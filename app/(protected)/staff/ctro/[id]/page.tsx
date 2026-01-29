@@ -62,9 +62,10 @@ export default async function CtroDetailPage({
   let header: Awaited<ReturnType<typeof getCtroById>>["header"];
   let lines: Awaited<ReturnType<typeof getCtroById>>["lines"];
   let totals: Awaited<ReturnType<typeof getCtroById>>["totals"];
+  let lineErrorMessage: Awaited<ReturnType<typeof getCtroById>>["lineErrorMessage"];
   try {
     const data = await getCtroById(params.id, companyId);
-    ({ header, lines, totals } = data);
+    ({ header, lines, totals, lineErrorMessage } = data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message) {
@@ -84,6 +85,13 @@ export default async function CtroDetailPage({
       );
     }
     throw error;
+  }
+
+  if (lineErrorMessage) {
+    console.error("[CTRO line fetch error]", lineErrorMessage, {
+      ctroId: params.id,
+      companyId,
+    });
   }
 
   async function submitAction() {
@@ -189,6 +197,17 @@ export default async function CtroDetailPage({
         </CardContent>
       </Card>
 
+      {lineErrorMessage && (
+        <Card>
+          <CardHeader>
+            <CardTitle>CTRO lines unavailable</CardTitle>
+            <CardDescription>
+              CTRO loaded but lines could not be fetched. Please refresh or contact admin.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Lines</CardTitle>
@@ -221,7 +240,8 @@ export default async function CtroDetailPage({
                     <TableCell>
                       {(Array.isArray(line.depot)
                         ? line.depot[0]?.name
-                        : (line.depot as { name?: string } | null)?.name) ?? "-"}
+                        : (line.depot as { name?: string } | null)?.name) ??
+                        (line.depot_id ?? "-")}
                     </TableCell>
                     <TableCell>{line.waybill_no ?? "-"}</TableCell>
                     <TableCell>{line.ctro_ref_no ?? "-"}</TableCell>
