@@ -19,13 +19,17 @@ import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 
 export default async function CtroDetailPage({
-  params,
+  params: rawParams,
   searchParams,
 }: {
-  params: { id: string };
+  params: { id: string } | Promise<{ id: string }>;
   searchParams?: Promise<{ toast?: string; message?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const params =
+    "then" in (rawParams as Promise<{ id: string }>)
+      ? await (rawParams as Promise<{ id: string }>)
+      : (rawParams as { id: string });
   const user = await requireUser();
   const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(

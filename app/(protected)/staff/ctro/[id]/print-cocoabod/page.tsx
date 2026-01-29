@@ -14,10 +14,14 @@ const formatDate = (value: string | null) => {
 };
 
 export default async function CtroPrintCocoaBodPage({
-  params,
+  params: rawParams,
 }: {
-  params: { id: string };
+  params: { id: string } | Promise<{ id: string }>;
 }) {
+  const params =
+    "then" in (rawParams as Promise<{ id: string }>)
+      ? await (rawParams as Promise<{ id: string }>)
+      : (rawParams as { id: string });
   let header: Awaited<ReturnType<typeof getCtroById>>["header"];
   let lines: Awaited<ReturnType<typeof getCtroById>>["lines"];
   let totals: Awaited<ReturnType<typeof getCtroById>>["totals"];
