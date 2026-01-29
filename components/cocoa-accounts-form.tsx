@@ -41,6 +41,9 @@ type CocoaAccountsFormState = {
 const selectValueClass = (value: string) =>
   value ? "text-red-600" : "text-zinc-500";
 
+const optionStyle = (selected: boolean) =>
+  selected ? { color: "#dc2626", fontWeight: 500 } : undefined;
+
 export default function CocoaAccountsForm({
   action,
   accounts,
@@ -112,7 +115,11 @@ export default function CocoaAccountsForm({
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <option
+                key={account.id}
+                value={account.id}
+                style={optionStyle(account.id === formState.stock_field_account_id)}
+              >
                 {account.code} - {account.name}
               </option>
             ))}
@@ -134,7 +141,11 @@ export default function CocoaAccountsForm({
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <option
+                key={account.id}
+                value={account.id}
+                style={optionStyle(account.id === formState.stock_evac_account_id)}
+              >
                 {account.code} - {account.name}
               </option>
             ))}
@@ -156,7 +167,11 @@ export default function CocoaAccountsForm({
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <option
+                key={account.id}
+                value={account.id}
+                style={optionStyle(account.id === formState.stock_margin_account_id)}
+              >
                 {account.code} - {account.name}
               </option>
             ))}
@@ -178,7 +193,11 @@ export default function CocoaAccountsForm({
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <option
+                key={account.id}
+                value={account.id}
+                style={optionStyle(account.id === formState.advances_account_id)}
+              >
                 {account.code} - {account.name}
               </option>
             ))}
@@ -200,7 +219,11 @@ export default function CocoaAccountsForm({
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <option
+                key={account.id}
+                value={account.id}
+                style={optionStyle(account.id === formState.buyer_margin_income_account_id)}
+              >
                 {account.code} - {account.name}
               </option>
             ))}
@@ -222,7 +245,11 @@ export default function CocoaAccountsForm({
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <option
+                key={account.id}
+                value={account.id}
+                style={optionStyle(account.id === formState.evacuation_payable_account_id)}
+              >
                 {account.code} - {account.name}
               </option>
             ))}
