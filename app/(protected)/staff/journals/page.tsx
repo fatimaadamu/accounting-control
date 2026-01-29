@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 
 import JournalEntryForm from "@/components/journal-entry-form";
 import { Badge } from "@/components/ui/badge";
+import ApproveButton from "@/components/approve-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -188,9 +189,7 @@ export default async function JournalsPage() {
                       {canApprove && journal.status === "draft" && (
                         <form action={approveAction}>
                           <input type="hidden" name="journal_id" value={journal.id} />
-                          <Button type="submit" variant="outline">
-                            Approve
-                          </Button>
+                          <ApproveButton />
                         </form>
                       )}
                       {canApprove && journal.status === "approved" && (
