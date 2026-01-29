@@ -432,18 +432,53 @@ export default async function AdminSetupPage({
     const advances = String(formData.get("advances_account_id") ?? "");
     const marginIncome = String(formData.get("buyer_margin_income_account_id") ?? "");
     const evacPayable = String(formData.get("evacuation_payable_account_id") ?? "");
+    const selectedIds = [
+      cocoaField,
+      cocoaEvac,
+      cocoaMargin,
+      advances,
+      marginIncome,
+      evacPayable,
+    ].filter(Boolean);
 
-    await upsertCocoaAccountConfig({
-      company_id: activeCompanyId,
-      stock_field_account_id: cocoaField || null,
-      stock_evac_account_id: cocoaEvac || null,
-      stock_margin_account_id: cocoaMargin || null,
-      advances_account_id: advances || null,
-      buyer_margin_income_account_id: marginIncome || null,
-      evacuation_payable_account_id: evacPayable || null,
-    });
+    try {
+      if (selectedIds.length > 0) {
+        const { data: existingAccounts, error } = await supabaseAdmin()
+          .from("accounts")
+          .select("id")
+          .eq("company_id", activeCompanyId)
+          .in("id", selectedIds);
 
-    revalidatePath("/admin/setup");
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        const existingIds = new Set((existingAccounts ?? []).map((row) => row.id));
+        const missingIds = selectedIds.filter((id) => !existingIds.has(id));
+        if (missingIds.length > 0) {
+          throw new Error("One or more selected accounts no longer exist.");
+        }
+      }
+
+      await upsertCocoaAccountConfig({
+        company_id: activeCompanyId,
+        stock_field_account_id: cocoaField || null,
+        stock_evac_account_id: cocoaEvac || null,
+        stock_margin_account_id: cocoaMargin || null,
+        advances_account_id: advances || null,
+        buyer_margin_income_account_id: marginIncome || null,
+        evacuation_payable_account_id: evacPayable || null,
+      });
+
+      revalidatePath("/admin/setup");
+      redirect("/admin/setup?toast=success&message=Cocoa%20accounts%20saved.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save cocoa accounts.";
+      console.error("[Cocoa accounts save error]", message, error);
+      redirect(
+        `/admin/setup?toast=error&message=${encodeURIComponent(message)}`
+      );
+    }
   }
 
   return (
