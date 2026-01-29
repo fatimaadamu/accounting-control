@@ -29,6 +29,15 @@ type CocoaAccountsFormProps = {
   config: CocoaAccountConfig;
 };
 
+type CocoaAccountsFormState = {
+  stock_field_account_id: string;
+  stock_evac_account_id: string;
+  stock_margin_account_id: string;
+  advances_account_id: string;
+  buyer_margin_income_account_id: string;
+  evacuation_payable_account_id: string;
+};
+
 export default function CocoaAccountsForm({
   action,
   accounts,
@@ -39,6 +48,25 @@ export default function CocoaAccountsForm({
   const [toast, setToast] = React.useState<{ kind: "success" | "error"; message: string } | null>(
     null
   );
+  const [formState, setFormState] = React.useState<CocoaAccountsFormState>({
+    stock_field_account_id: config?.stock_field_account_id ?? "",
+    stock_evac_account_id: config?.stock_evac_account_id ?? "",
+    stock_margin_account_id: config?.stock_margin_account_id ?? "",
+    advances_account_id: config?.advances_account_id ?? "",
+    buyer_margin_income_account_id: config?.buyer_margin_income_account_id ?? "",
+    evacuation_payable_account_id: config?.evacuation_payable_account_id ?? "",
+  });
+
+  React.useEffect(() => {
+    setFormState({
+      stock_field_account_id: config?.stock_field_account_id ?? "",
+      stock_evac_account_id: config?.stock_evac_account_id ?? "",
+      stock_margin_account_id: config?.stock_margin_account_id ?? "",
+      advances_account_id: config?.advances_account_id ?? "",
+      buyer_margin_income_account_id: config?.buyer_margin_income_account_id ?? "",
+      evacuation_payable_account_id: config?.evacuation_payable_account_id ?? "",
+    });
+  }, [config]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -70,7 +98,13 @@ export default function CocoaAccountsForm({
           <Select
             id="stock_field_account_id"
             name="stock_field_account_id"
-            defaultValue={config?.stock_field_account_id ?? ""}
+            value={formState.stock_field_account_id}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                stock_field_account_id: event.target.value,
+              }))
+            }
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
@@ -85,7 +119,13 @@ export default function CocoaAccountsForm({
           <Select
             id="stock_evac_account_id"
             name="stock_evac_account_id"
-            defaultValue={config?.stock_evac_account_id ?? ""}
+            value={formState.stock_evac_account_id}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                stock_evac_account_id: event.target.value,
+              }))
+            }
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
@@ -100,7 +140,13 @@ export default function CocoaAccountsForm({
           <Select
             id="stock_margin_account_id"
             name="stock_margin_account_id"
-            defaultValue={config?.stock_margin_account_id ?? ""}
+            value={formState.stock_margin_account_id}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                stock_margin_account_id: event.target.value,
+              }))
+            }
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
@@ -115,7 +161,13 @@ export default function CocoaAccountsForm({
           <Select
             id="advances_account_id"
             name="advances_account_id"
-            defaultValue={config?.advances_account_id ?? ""}
+            value={formState.advances_account_id}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                advances_account_id: event.target.value,
+              }))
+            }
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
@@ -130,7 +182,13 @@ export default function CocoaAccountsForm({
           <Select
             id="buyer_margin_income_account_id"
             name="buyer_margin_income_account_id"
-            defaultValue={config?.buyer_margin_income_account_id ?? ""}
+            value={formState.buyer_margin_income_account_id}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                buyer_margin_income_account_id: event.target.value,
+              }))
+            }
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
@@ -145,7 +203,13 @@ export default function CocoaAccountsForm({
           <Select
             id="evacuation_payable_account_id"
             name="evacuation_payable_account_id"
-            defaultValue={config?.evacuation_payable_account_id ?? ""}
+            value={formState.evacuation_payable_account_id}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                evacuation_payable_account_id: event.target.value,
+              }))
+            }
           >
             <option value="">Select account</option>
             {accounts.map((account) => (
