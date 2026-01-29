@@ -44,7 +44,6 @@ export default async function CtroPrintInternalPage({
       <div className="grid gap-2 md:grid-cols-2">
         <div>Season: {header.season ?? "-"}</div>
         <div>Date: {header.ctro_date}</div>
-        <div>Region: {header.region ?? "-"}</div>
         <div>Agent: {(agent as { name?: string } | null)?.name ?? "-"}</div>
         <div>Status: {header.status}</div>
         <div>Remarks: {header.remarks ?? "-"}</div>

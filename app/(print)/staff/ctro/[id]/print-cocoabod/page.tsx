@@ -178,11 +178,7 @@ export default async function CtroPrintCocoaBodPage({
           {lines.map((line) => (
             <tr key={line.id}>
               <td className="border border-zinc-200 px-2 py-1">
-                {(Array.isArray(line.depot)
-                  ? (line.depot[0]?.region as { name?: string } | null)?.name
-                  : ((line.depot as { region?: { name?: string } | null } | null)?.region as
-                      | { name?: string }
-                      | null)?.name) ?? "-"}
+                {"-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
                 {(Array.isArray(line.depot)

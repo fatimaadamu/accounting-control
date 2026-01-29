@@ -244,7 +244,6 @@ export default async function CtroDetailPage({
         </CardHeader>
         <CardContent className="grid gap-2 text-sm text-zinc-600 md:grid-cols-2">
           <div>Date: {header.ctro_date}</div>
-          <div>Region: {header.region ?? "-"}</div>
           <div>Agent: {(agent as { name?: string } | null)?.name ?? "-"}</div>
           <div>Status: {header.status}</div>
           <div>Remarks: {header.remarks ?? "-"}</div>
