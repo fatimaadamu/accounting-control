@@ -33,21 +33,41 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
   const { data: header, error: headerError } = await supabaseAdmin()
     .from("ctro_headers")
     .select(
-      "id, company_id, company:companies ( name ), period_id, ctro_no, season, ctro_date, region, status, remarks, created_by, submitted_at, posted_at, evacuation_payment_mode, evacuation_cash_account_id, cocoa_agents ( name )"
+      "id, company_id, period_id, ctro_no, season, ctro_date, region, status, remarks, created_by, submitted_at, posted_at, evacuation_payment_mode, evacuation_cash_account_id, agent_id"
     )
     .eq("id", ctroId)
     .single();
 
   if (headerError || !header) {
-    throw new Error(
-      headerError?.message ?? `CTRO not found. id=${ctroId}`
-    );
+    throw new Error(headerError?.message ?? `CTRO not found. id=${ctroId}`);
   }
 
   if (companyId && header.company_id !== companyId) {
     throw new Error(
       `CTRO does not belong to the active company. id=${ctroId} company=${companyId}`
     );
+  }
+
+  let companyName: string | null = null;
+  const { data: companyData } = await supabaseAdmin()
+    .from("companies")
+    .select("name")
+    .eq("id", header.company_id)
+    .maybeSingle();
+  if (companyData?.name) {
+    companyName = companyData.name;
+  }
+
+  let agentName: string | null = null;
+  if (header.agent_id) {
+    const { data: agentData } = await supabaseAdmin()
+      .from("cocoa_agents")
+      .select("name")
+      .eq("id", header.agent_id)
+      .maybeSingle();
+    if (agentData?.name) {
+      agentName = agentData.name;
+    }
   }
 
   const { data: lines, error: lineError } = await supabaseAdmin()
@@ -92,5 +112,11 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
     .eq("ctro_id", ctroId)
     .maybeSingle();
 
-  return { header, lines: safeLines, totals, lineErrorMessage };
+  const enrichedHeader = {
+    ...header,
+    company: companyName ? { name: companyName } : null,
+    cocoa_agents: agentName ? [{ name: agentName }] : null,
+  };
+
+  return { header: enrichedHeader, lines: safeLines, totals, lineErrorMessage };
 };
