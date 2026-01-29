@@ -1,4 +1,5 @@
 import PrintButton from "@/components/print-button";
+import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
@@ -22,11 +23,19 @@ export default async function CtroPrintCocoaBodPage({
     "then" in (rawParams as Promise<{ id: string }>)
       ? await (rawParams as Promise<{ id: string }>)
       : (rawParams as { id: string });
+  const user = await requireUser();
+  const companyId = await ensureActiveCompanyId(user.id, `/staff/ctro/${params.id}/print-cocoabod`);
+
+  if (!companyId) {
+    return null;
+  }
+
+  await requireCompanyAccess(user.id, companyId);
   let header: Awaited<ReturnType<typeof getCtroById>>["header"];
   let lines: Awaited<ReturnType<typeof getCtroById>>["lines"];
   let totals: Awaited<ReturnType<typeof getCtroById>>["totals"];
   try {
-    const data = await getCtroById(params.id);
+    const data = await getCtroById(params.id, companyId);
     ({ header, lines, totals } = data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
@@ -83,6 +92,20 @@ export default async function CtroPrintCocoaBodPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6 text-sm text-zinc-800">
+      <style>{`
+        @page {
+          size: A4;
+          margin: 16mm;
+        }
+        @media print {
+          .print-hidden {
+            display: none !important;
+          }
+          body {
+            margin: 0;
+          }
+        }
+      `}</style>
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
@@ -95,7 +118,9 @@ export default async function CtroPrintCocoaBodPage({
             <div>Company: {companyName}</div>
           </div>
         </div>
-        <PrintButton />
+        <div className="print-hidden">
+          <PrintButton />
+        </div>
       </div>
 
       <table className="w-full border-collapse border border-zinc-200 text-xs">
