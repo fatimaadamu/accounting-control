@@ -89,8 +89,8 @@ export default async function CtroPrintCocoaBodPage({
     <div className="mx-auto max-w-6xl space-y-6 p-6 text-sm text-zinc-800">
       <style>{`
         @page {
-          size: A4 landscape;
-          margin: 12mm;
+          size: A4;
+          margin: 16mm;
         }
         @media print {
           .print-hidden {
@@ -112,15 +112,22 @@ export default async function CtroPrintCocoaBodPage({
           <tr className="bg-zinc-100">
             <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">Take-over Centre</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Evac / Tonne
+              Producer / Tonne
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
               Producer Value
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Evacuation / Tonne
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Evacuation Value
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Buyer Margin / Tonne
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
               Buyer Margin Value
@@ -146,8 +153,6 @@ export default async function CtroPrintCocoaBodPage({
                   ? line.center[0]?.name
                   : (line.center as { name?: string } | null)?.name) ?? "-"}
               </td>
-              <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1">{header.ctro_no}</td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatBags(Number(line.bags ?? 0))}
               </td>
@@ -155,10 +160,19 @@ export default async function CtroPrintCocoaBodPage({
                 {formatTonnage(Number(line.tonnage ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
+                {formatRate(Number(line.applied_producer_price_per_tonne ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatMoney(Number(line.producer_price_value ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.evacuation_cost ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_buyer_margin_per_tonne ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatMoney(Number(line.buyers_margin_value ?? 0))}
