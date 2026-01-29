@@ -145,6 +145,53 @@ export default async function CtroPage({
     throw new Error(ctroError.message);
   }
 
+  const headers = ctroHeaders ?? [];
+  const ctroIdsNeedingTotals = headers
+    .filter((ctro) => {
+      const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
+      if (!totals) {
+        return true;
+      }
+      const bags = Number(totals.total_bags ?? 0);
+      const tonnage = Number(totals.total_tonnage ?? 0);
+      const total = Number(totals.grand_total ?? 0);
+      return bags === 0 && tonnage === 0 && total === 0;
+    })
+    .map((ctro) => ctro.id);
+
+  const computedTotals = new Map<
+    string,
+    { total_bags: number; total_tonnage: number; grand_total: number }
+  >();
+
+  if (ctroIdsNeedingTotals.length > 0) {
+    const { data: lineTotals, error: lineTotalsError } = await supabaseAdmin()
+      .from("ctro_lines")
+      .select("ctro_id, bags, tonnage, line_total")
+      .in("ctro_id", ctroIdsNeedingTotals);
+
+    if (lineTotalsError) {
+      if (isSchemaCacheError(lineTotalsError)) {
+        console.error("[CTRO schema error]", lineTotalsError.message);
+        return renderSchemaBanner();
+      }
+      throw new Error(lineTotalsError.message);
+    }
+
+    for (const line of lineTotals ?? []) {
+      const entry =
+        computedTotals.get(line.ctro_id) ?? {
+          total_bags: 0,
+          total_tonnage: 0,
+          grand_total: 0,
+        };
+      entry.total_bags += Number(line.bags ?? 0);
+      entry.total_tonnage += Number(line.tonnage ?? 0);
+      entry.grand_total += Number(line.line_total ?? 0);
+      computedTotals.set(line.ctro_id, entry);
+    }
+  }
+
   async function createAction(formData: FormData) {
     "use server";
     const toNumber = (value: unknown) => {
@@ -385,16 +432,18 @@ export default async function CtroPage({
                     </TableCell>
                   </TableRow>
                 ) : (
-                ctroHeaders?.map((ctro) => {
+                headers.map((ctro) => {
                   const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
+                  const fallbackTotals = computedTotals.get(ctro.id);
+                  const displayTotals = totals ?? fallbackTotals;
                   return (
                     <TableRow key={ctro.id}>
                       <TableCell>{ctro.ctro_date}</TableCell>
                       <TableCell>{ctro.ctro_no}</TableCell>
                       <TableCell>{ctro.season ?? "-"}</TableCell>
-                      <TableCell>{formatBags(Number(totals?.total_bags ?? 0))}</TableCell>
-                      <TableCell>{formatTonnage(Number(totals?.total_tonnage ?? 0))}</TableCell>
-                      <TableCell>{formatMoney(Number(totals?.grand_total ?? 0))}</TableCell>
+                      <TableCell>{formatBags(Number(displayTotals?.total_bags ?? 0))}</TableCell>
+                      <TableCell>{formatTonnage(Number(displayTotals?.total_tonnage ?? 0))}</TableCell>
+                      <TableCell>{formatMoney(Number(displayTotals?.grand_total ?? 0))}</TableCell>
                       <TableCell>{ctro.status}</TableCell>
                       <TableCell className="space-y-2">
                         <Link
