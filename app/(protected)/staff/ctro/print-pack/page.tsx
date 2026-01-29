@@ -93,12 +93,27 @@ export default async function CtroPrintPackPage({
   });
 
   const distinctDates = new Set(
-    flattenedLines
-      .map((line) => line.ctro_date)
+    headerList
+      .map((header) => header.ctro_date)
       .filter((value) => value)
   );
-  const showDateColumn = distinctDates.size > 1;
+
+  if (distinctDates.size > 1) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 p-6 text-sm text-zinc-700">
+        <p>Selected CTROs have different dates. Please print by date.</p>
+        <Link
+          href="/staff/ctro"
+          className="inline-flex items-center rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+        >
+          Back to CTRO list
+        </Link>
+      </div>
+    );
+  }
+
   const singleDate = distinctDates.size === 1 ? (Array.from(distinctDates)[0] as string) : null;
+  const showDateColumn = false;
 
   const packTotals = flattenedLines.reduce(
     (acc, line) => {
