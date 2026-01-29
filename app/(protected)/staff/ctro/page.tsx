@@ -17,6 +17,7 @@ import {
 import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 import { canAnyRole } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 
 export default async function CtroPage({
   searchParams,
@@ -43,6 +44,15 @@ export default async function CtroPage({
   const canDeleteDraft = canAnyRole(companyRoles, "draft", "DELETE_DRAFT").allowed;
   const isAdmin = companyRoles.includes("Admin");
 
+  const renderSchemaBanner = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>CTRO</CardTitle>
+        <CardDescription>{schemaCacheBannerMessage}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+
   const { data: periods, error: periodError } = await supabaseAdmin()
     .from("periods")
     .select("id, period_month, period_year, status, start_date, end_date")
@@ -50,6 +60,9 @@ export default async function CtroPage({
     .order("start_date", { ascending: true });
 
   if (periodError) {
+    if (isSchemaCacheError(periodError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(periodError.message);
   }
 
@@ -72,7 +85,10 @@ export default async function CtroPage({
     .eq("company_id", companyId)
     .maybeSingle();
 
-  if (accountError && !accountError.message.includes("Could not find the table")) {
+  if (accountError) {
+    if (isSchemaCacheError(accountError) || accountError.message.includes("Could not find the table")) {
+      return renderSchemaBanner();
+    }
     throw new Error(accountError.message);
   }
 
@@ -90,6 +106,9 @@ export default async function CtroPage({
     .order("name");
 
   if (depotError) {
+    if (isSchemaCacheError(depotError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(depotError.message);
   }
 
@@ -99,6 +118,9 @@ export default async function CtroPage({
     .order("name");
 
   if (centerError) {
+    if (isSchemaCacheError(centerError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(centerError.message);
   }
 
@@ -112,11 +134,22 @@ export default async function CtroPage({
     .limit(50);
 
   if (ctroError) {
+    if (isSchemaCacheError(ctroError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(ctroError.message);
   }
 
   async function createAction(formData: FormData) {
     "use server";
+    const toNumber = (value: unknown) => {
+      const raw = String(value ?? "").replace(/,/g, "").trim();
+      if (!raw) {
+        return 0;
+      }
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
     const season = String(formData.get("season") ?? "").trim();
     const ctroDate = String(formData.get("ctro_date") ?? "");
     const periodId = String(formData.get("period_id") ?? "");
@@ -134,7 +167,7 @@ export default async function CtroPage({
 
     if (
       !lines.length ||
-      lines.some((line) => Number(line.bags ?? 0) <= 0)
+      lines.some((line) => toNumber(line.bags ?? 0) <= 0)
     ) {
       redirect(
         `/staff/ctro?toast=error&message=${encodeURIComponent(
@@ -156,7 +189,7 @@ export default async function CtroPage({
         (line) =>
           line.depot_id &&
           line.takeover_center_id &&
-          Number(line.applied_takeover_price_per_tonne ?? 0) <= 0
+          toNumber(line.applied_takeover_price_per_tonne ?? 0) <= 0
       )
     ) {
       redirect(
@@ -183,19 +216,19 @@ export default async function CtroPage({
           purity_cert_no: line.purity_cert_no,
           depot_id: line.depot_id || null,
           takeover_center_id: line.takeover_center_id,
-          bag_weight_kg: Number(line.bag_weight_kg) || 16,
-          bags: Number(line.bags) || 0,
-          tonnage: Number(line.tonnage) || 0,
-          applied_producer_price_per_tonne: Number(line.applied_producer_price_per_tonne) || 0,
-          applied_buyer_margin_per_tonne: Number(line.applied_buyer_margin_per_tonne) || 0,
+          bag_weight_kg: toNumber(line.bag_weight_kg) || 16,
+          bags: toNumber(line.bags) || 0,
+          tonnage: toNumber(line.tonnage) || 0,
+          applied_producer_price_per_tonne: toNumber(line.applied_producer_price_per_tonne) || 0,
+          applied_buyer_margin_per_tonne: toNumber(line.applied_buyer_margin_per_tonne) || 0,
           applied_secondary_evac_cost_per_tonne:
-            Number(line.applied_secondary_evac_cost_per_tonne) || 0,
+            toNumber(line.applied_secondary_evac_cost_per_tonne) || 0,
           applied_takeover_price_per_tonne:
-            Number(line.applied_takeover_price_per_tonne) || 0,
-          evacuation_cost: Number(line.evacuation_cost) || 0,
+            toNumber(line.applied_takeover_price_per_tonne) || 0,
+          evacuation_cost: toNumber(line.evacuation_cost) || 0,
           evacuation_treatment: (line.evacuation_treatment as "company_paid" | "deducted") ?? "company_paid",
-          producer_price_value: Number(line.producer_price_value) || 0,
-          buyers_margin_value: Number(line.buyers_margin_value) || 0,
+          producer_price_value: toNumber(line.producer_price_value) || 0,
+          buyers_margin_value: toNumber(line.buyers_margin_value) || 0,
         })),
       });
     } catch (error) {

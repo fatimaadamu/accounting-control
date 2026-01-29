@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { upsertCocoaAccountConfig } from "@/lib/actions/ctro-admin";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 
 type AccountSeed = {
   code: string;
@@ -205,6 +206,14 @@ export default async function AdminSetupPage({
 
   await requireCompanyRole(user.id, companyId, ["Admin"]);
   const activeCompanyId = companyId as string;
+  const renderSchemaBanner = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Setup</CardTitle>
+        <CardDescription>{schemaCacheBannerMessage}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
 
   const decodeList = (value?: string) =>
     value ? value.split("|").map((item) => decodeURIComponent(item)).filter(Boolean) : [];
@@ -220,6 +229,9 @@ export default async function AdminSetupPage({
     .order("code");
 
   if (accountsError) {
+    if (isSchemaCacheError(accountsError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(accountsError.message);
   }
 
@@ -243,11 +255,13 @@ export default async function AdminSetupPage({
     .maybeSingle();
 
   if (cocoaConfigError) {
-    if (cocoaConfigError.message.includes("Could not find the table")) {
-      cocoaAccountsAvailable = false;
-    } else {
-      throw new Error(cocoaConfigError.message);
+    if (
+      isSchemaCacheError(cocoaConfigError) ||
+      cocoaConfigError.message.includes("Could not find the table")
+    ) {
+      return renderSchemaBanner();
     }
+    throw new Error(cocoaConfigError.message);
   } else {
     cocoaAccountConfig = cocoaConfigData ?? null;
   }

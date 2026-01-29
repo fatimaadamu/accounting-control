@@ -12,6 +12,7 @@ import ToastMessage from "@/components/toast-message";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 
 const parseCsv = (raw: string) =>
   raw
@@ -77,6 +78,15 @@ export default async function CocoaRateCardsPage({
 
   await requireCompanyRole(user.id, companyId, ["Admin"]);
 
+  const renderSchemaBanner = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Rate cards</CardTitle>
+        <CardDescription>{schemaCacheBannerMessage}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+
   let rateCards:
     | Array<{
         id: string;
@@ -93,6 +103,12 @@ export default async function CocoaRateCardsPage({
     .eq("company_id", companyId)
     .order("effective_from", { ascending: false });
 
+  if (rateCardError) {
+    if (isSchemaCacheError(rateCardError)) {
+      return renderSchemaBanner();
+    }
+  }
+
   if (rateCardError && rateCardError.message.includes("bags_per_tonne")) {
     const { data: fallbackData, error: fallbackError } = await supabaseAdmin()
       .from("cocoa_rate_cards")
@@ -101,6 +117,9 @@ export default async function CocoaRateCardsPage({
       .order("effective_from", { ascending: false });
 
     if (fallbackError) {
+      if (isSchemaCacheError(fallbackError)) {
+        return renderSchemaBanner();
+      }
       throw new Error(fallbackError.message);
     }
 
@@ -122,6 +141,9 @@ export default async function CocoaRateCardsPage({
     .order("name");
 
   if (regionError) {
+    if (isSchemaCacheError(regionError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(regionError.message);
   }
 
@@ -131,6 +153,9 @@ export default async function CocoaRateCardsPage({
     .order("name");
 
   if (districtError) {
+    if (isSchemaCacheError(districtError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(districtError.message);
   }
 
@@ -140,6 +165,9 @@ export default async function CocoaRateCardsPage({
     .order("name");
 
   if (depotError) {
+    if (isSchemaCacheError(depotError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(depotError.message);
   }
 
@@ -149,6 +177,9 @@ export default async function CocoaRateCardsPage({
     .order("name");
 
   if (centerError) {
+    if (isSchemaCacheError(centerError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(centerError.message);
   }
 
@@ -162,6 +193,9 @@ export default async function CocoaRateCardsPage({
     : { data: [], error: null };
 
   if (linesError) {
+    if (isSchemaCacheError(linesError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(linesError.message);
   }
 

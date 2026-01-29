@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import AccordionPanels from "@/components/accordion-panels";
 import ToastMessage from "@/components/toast-message";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
+import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const defaultCenters = ["Tema", "Takoradi", "Kaase"];
@@ -67,12 +68,24 @@ export default async function CocoaGeoPage({
 
   await requireCompanyRole(user.id, companyId, ["Admin"]);
 
+  const renderSchemaBanner = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Cocoa Geo</CardTitle>
+        <CardDescription>{schemaCacheBannerMessage}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+
   const { data: regions, error: regionError } = await supabaseAdmin()
     .from("cocoa_regions")
     .select("id, name")
     .order("name");
 
   if (regionError) {
+    if (isSchemaCacheError(regionError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(regionError.message);
   }
 
@@ -82,6 +95,9 @@ export default async function CocoaGeoPage({
     .order("name");
 
   if (districtError) {
+    if (isSchemaCacheError(districtError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(districtError.message);
   }
 
@@ -91,6 +107,9 @@ export default async function CocoaGeoPage({
     .order("name");
 
   if (depotError) {
+    if (isSchemaCacheError(depotError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(depotError.message);
   }
 
@@ -100,6 +119,9 @@ export default async function CocoaGeoPage({
     .order("name");
 
   if (centerError) {
+    if (isSchemaCacheError(centerError)) {
+      return renderSchemaBanner();
+    }
     throw new Error(centerError.message);
   }
 

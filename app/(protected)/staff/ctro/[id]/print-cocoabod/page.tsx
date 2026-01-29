@@ -1,6 +1,7 @@
 import PrintButton from "@/components/print-button";
 import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
+import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 
 const formatDate = (value: string | null) => {
   if (!value) return "-";
@@ -17,7 +18,23 @@ export default async function CtroPrintCocoaBodPage({
 }: {
   params: { id: string };
 }) {
-  const { header, lines, totals } = await getCtroById(params.id);
+  let header: Awaited<ReturnType<typeof getCtroById>>["header"];
+  let lines: Awaited<ReturnType<typeof getCtroById>>["lines"];
+  let totals: Awaited<ReturnType<typeof getCtroById>>["totals"];
+  try {
+    const data = await getCtroById(params.id);
+    ({ header, lines, totals } = data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (isSchemaCacheError({ message })) {
+      return (
+        <div className="mx-auto max-w-2xl p-6 text-sm text-zinc-700">
+          {schemaCacheBannerMessage}
+        </div>
+      );
+    }
+    throw error;
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6 text-sm text-zinc-800">

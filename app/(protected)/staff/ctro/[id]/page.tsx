@@ -16,6 +16,7 @@ import {
 import { canAnyRole } from "@/lib/permissions";
 import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
+import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 
 export default async function CtroDetailPage({
   params,
@@ -42,7 +43,28 @@ export default async function CtroDetailPage({
   const canDeleteDraft = canAnyRole(companyRoles, "draft", "DELETE_DRAFT").allowed;
   const isAdmin = companyRoles.includes("Admin");
 
-  const { header, lines, totals } = await getCtroById(params.id, companyId);
+  const renderSchemaBanner = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>CTRO</CardTitle>
+        <CardDescription>{schemaCacheBannerMessage}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+
+  let header: Awaited<ReturnType<typeof getCtroById>>["header"];
+  let lines: Awaited<ReturnType<typeof getCtroById>>["lines"];
+  let totals: Awaited<ReturnType<typeof getCtroById>>["totals"];
+  try {
+    const data = await getCtroById(params.id, companyId);
+    ({ header, lines, totals } = data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (isSchemaCacheError({ message })) {
+      return renderSchemaBanner();
+    }
+    throw error;
+  }
 
   async function submitAction() {
     "use server";
