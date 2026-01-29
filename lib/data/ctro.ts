@@ -33,7 +33,7 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
   const { data: header, error: headerError } = await supabaseAdmin()
     .from("ctro_headers")
     .select(
-      "id, company_id, period_id, ctro_no, season, ctro_date, region, status, remarks, created_by, submitted_at, posted_at, evacuation_payment_mode, evacuation_cash_account_id, agent_id"
+      "id, company_id, period_id, ctro_no, season, ctro_date, region, status, remarks, created_by, submitted_at, posted_at, printed_at, printed_by, print_count, evacuation_payment_mode, evacuation_cash_account_id, agent_id"
     )
     .eq("id", ctroId)
     .single();

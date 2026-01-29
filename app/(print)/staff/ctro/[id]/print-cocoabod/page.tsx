@@ -1,8 +1,8 @@
-import PrintButton from "@/components/print-button";
 import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const formatDate = (value: string | null) => {
   if (!value) return "-";
@@ -57,6 +57,25 @@ export default async function CtroPrintCocoaBodPage({
     );
   }
 
+  if (!header.printed_at) {
+    const currentCount = Number(header.print_count ?? 0) || 0;
+    const { error: printError } = await supabaseAdmin()
+      .from("ctro_headers")
+      .update({
+        printed_at: new Date().toISOString(),
+        printed_by: user.id,
+        print_count: currentCount + 1,
+      })
+      .eq("id", header.id);
+
+    if (printError) {
+      console.error("[CTRO print update error]", printError.message, {
+        ctroId: header.id,
+        companyId,
+      });
+    }
+  }
+
   const totalsFromLines = lines.reduce(
     (acc, line) => {
       acc.totalBags += Number(line.bags ?? 0);
@@ -86,10 +105,6 @@ export default async function CtroPrintCocoaBodPage({
     grandTotal: totals?.grand_total ?? totalsFromLines.grandTotal,
   };
 
-  const companyName =
-    (header.company as { name?: string } | null)?.name ??
-    (header.company_id ? `Company ${header.company_id}` : "-");
-
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6 text-sm text-zinc-800">
       <style>{`
@@ -117,21 +132,10 @@ export default async function CtroPrintCocoaBodPage({
           }
         }
       `}</style>
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
-          <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
-          <p className="text-sm font-medium">COCOA TAKEN OVER RECEIPT (CTRO)</p>
-          <div className="pt-2 text-xs text-zinc-700">
-            <div>CTRO No: {header.ctro_no}</div>
-            <div>Date: {formatDate(header.ctro_date)}</div>
-            <div>Season: {header.season ?? "-"}</div>
-            <div>Company: {companyName}</div>
-          </div>
-        </div>
-        <div className="print-hidden">
-          <PrintButton />
-        </div>
+      <div className="space-y-1">
+        <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
+        <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
+        <p className="text-sm font-medium">DATE: {formatDate(header.ctro_date)}</p>
       </div>
 
       <table className="w-full border-collapse border border-zinc-200 text-xs">

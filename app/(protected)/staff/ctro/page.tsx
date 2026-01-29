@@ -18,13 +18,27 @@ import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 import { canAnyRole } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
+import CtroReprintButton from "@/components/ctro-reprint-button";
+
+type ArchiveLine = {
+  id: string;
+  ctro_id: string;
+  depot?: { name?: string }[] | { name?: string } | null;
+  center?: { name?: string }[] | { name?: string } | null;
+  waybill_no: string | null;
+  ctro_ref_no: string | null;
+  bags: number | null;
+  tonnage: number | null;
+  line_total: number | null;
+};
 
 export default async function CtroPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ toast?: string; message?: string }>;
+  searchParams?: Promise<{ toast?: string; message?: string; view?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const activeView = resolvedSearchParams?.view === "archive" ? "archive" : "active";
   const user = await requireUser();
   const companyId = await ensureActiveCompanyId(user.id, "/staff/ctro");
 
@@ -128,12 +142,20 @@ export default async function CtroPage({
     throw new Error(centerError.message);
   }
 
-  const { data: ctroHeaders, error: ctroError } = await supabaseAdmin()
+  let ctroQuery = supabaseAdmin()
     .from("ctro_headers")
     .select(
-      "id, ctro_no, season, ctro_date, region, status, ctro_totals ( total_bags, total_tonnage, grand_total )"
+      "id, ctro_no, season, ctro_date, region, status, printed_at, print_count, ctro_totals ( total_bags, total_tonnage, grand_total )"
     )
-    .eq("company_id", companyId)
+    .eq("company_id", companyId);
+
+  if (activeView === "archive") {
+    ctroQuery = ctroQuery.not("printed_at", "is", null);
+  } else {
+    ctroQuery = ctroQuery.is("printed_at", null);
+  }
+
+  const { data: ctroHeaders, error: ctroError } = await ctroQuery
     .order("ctro_date", { ascending: false })
     .limit(50);
 
@@ -146,6 +168,33 @@ export default async function CtroPage({
   }
 
   const headers = ctroHeaders ?? [];
+  const archiveLineMap = new Map<string, ArchiveLine[]>();
+  if (activeView === "archive" && headers.length > 0) {
+    const { data: archivedLines, error: archivedLinesError } = await supabaseAdmin()
+      .from("ctro_lines")
+      .select(
+        "id, ctro_id, depot_id, depot:cocoa_depots ( name ), center:takeover_centers ( name ), waybill_no, ctro_ref_no, bags, tonnage, line_total"
+      )
+      .in(
+        "ctro_id",
+        headers.map((ctro) => ctro.id)
+      )
+      .order("line_date", { ascending: true });
+
+    if (archivedLinesError) {
+      if (isSchemaCacheError(archivedLinesError)) {
+        console.error("[CTRO schema error]", archivedLinesError.message);
+        return renderSchemaBanner();
+      }
+      throw new Error(archivedLinesError.message);
+    }
+
+    for (const line of archivedLines ?? []) {
+      const existing = archiveLineMap.get(line.ctro_id) ?? [];
+      existing.push(line);
+      archiveLineMap.set(line.ctro_id, existing);
+    }
+  }
   const ctroIdsNeedingTotals = headers
     .filter((ctro) => {
       const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
@@ -349,6 +398,51 @@ export default async function CtroPage({
     redirect("/staff/ctro?toast=deleted");
   }
 
+  async function reprintAction(formData: FormData) {
+    "use server";
+    const ctroId = String(formData.get("ctro_id") ?? "");
+    try {
+      const user = await requireUser();
+      const activeCompanyId = await ensureActiveCompanyId(user.id, "/staff/ctro?view=archive");
+      if (!activeCompanyId) {
+        return { ok: false, message: "No active company." };
+      }
+      await requireCompanyAccess(user.id, activeCompanyId);
+      const { data: existing, error } = await supabaseAdmin()
+        .from("ctro_headers")
+        .select("id, company_id, print_count")
+        .eq("id", ctroId)
+        .single();
+
+      if (error || !existing) {
+        return { ok: false, message: "CTRO not found." };
+      }
+      if (existing.company_id !== activeCompanyId) {
+        return { ok: false, message: "CTRO does not belong to the active company." };
+      }
+
+      const newCount = Number(existing.print_count ?? 0) + 1;
+      const { error: updateError } = await supabaseAdmin()
+        .from("ctro_headers")
+        .update({
+          printed_at: new Date().toISOString(),
+          printed_by: user.id,
+          print_count: newCount,
+        })
+        .eq("id", ctroId);
+
+      if (updateError) {
+        return { ok: false, message: updateError.message };
+      }
+
+      revalidatePath("/staff/ctro");
+      return { ok: true, message: "CTRO reprinted." };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to reprint CTRO.";
+      return { ok: false, message };
+    }
+  }
+
   return (
     <div className="space-y-6">
       {resolvedSearchParams?.toast && (
@@ -410,8 +504,34 @@ export default async function CtroPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent CTROs</CardTitle>
-          <CardDescription>Latest 50 CTROs for the active company.</CardDescription>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Recent CTROs</CardTitle>
+              <CardDescription>Latest 50 CTROs for the active company.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/staff/ctro?view=active"
+                className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                  activeView === "active"
+                    ? "border-zinc-900 text-zinc-900"
+                    : "border-zinc-200 text-zinc-600 hover:bg-zinc-100"
+                }`}
+              >
+                Active
+              </Link>
+              <Link
+                href="/staff/ctro?view=archive"
+                className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                  activeView === "archive"
+                    ? "border-zinc-900 text-zinc-900"
+                    : "border-zinc-200 text-zinc-600 hover:bg-zinc-100"
+                }`}
+              >
+                Archive (Downloaded)
+              </Link>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -455,41 +575,116 @@ export default async function CtroPage({
                         >
                           View
                         </Link>
-                        {ctro.status === "draft" && canSubmitDraft && (
-                          <form action={submitAction}>
-                            <input type="hidden" name="ctro_id" value={ctro.id} />
-                            <Button type="submit" variant="outline">
-                              Submit
-                            </Button>
-                          </form>
+                        {activeView === "archive" ? (
+                          <CtroReprintButton action={reprintAction} ctroId={ctro.id} />
+                        ) : (
+                          <>
+                            {ctro.status === "draft" && canSubmitDraft && (
+                              <form action={submitAction}>
+                                <input type="hidden" name="ctro_id" value={ctro.id} />
+                                <Button type="submit" variant="outline">
+                                  Submit
+                                </Button>
+                              </form>
+                            )}
+                            {ctro.status === "draft" &&
+                              isAdmin &&
+                              canSubmitDraft &&
+                              canPostSubmitted &&
+                              !missingCtroAccounts && (
+                                <form action={submitAndPostAction}>
+                                  <input type="hidden" name="ctro_id" value={ctro.id} />
+                                  <Button type="submit">
+                                    Submit &amp; Post
+                                  </Button>
+                                </form>
+                              )}
+                            {ctro.status === "submitted" && canPostSubmitted && !missingCtroAccounts && (
+                              <form action={postAction}>
+                                <input type="hidden" name="ctro_id" value={ctro.id} />
+                                <Button type="submit" variant="outline">
+                                  Post
+                                </Button>
+                              </form>
+                            )}
+                            {ctro.status === "draft" && canDeleteDraft && (
+                              <form action={deleteAction}>
+                                <input type="hidden" name="ctro_id" value={ctro.id} />
+                                <Button type="submit" variant="ghost">
+                                  Delete
+                                </Button>
+                              </form>
+                            )}
+                          </>
                         )}
-                        {ctro.status === "draft" &&
-                          isAdmin &&
-                          canSubmitDraft &&
-                          canPostSubmitted &&
-                          !missingCtroAccounts && (
-                            <form action={submitAndPostAction}>
-                              <input type="hidden" name="ctro_id" value={ctro.id} />
-                              <Button type="submit">
-                                Submit &amp; Post
-                              </Button>
-                            </form>
-                          )}
-                        {ctro.status === "submitted" && canPostSubmitted && !missingCtroAccounts && (
-                          <form action={postAction}>
-                            <input type="hidden" name="ctro_id" value={ctro.id} />
-                            <Button type="submit" variant="outline">
-                              Post
-                            </Button>
-                          </form>
-                        )}
-                        {ctro.status === "draft" && canDeleteDraft && (
-                          <form action={deleteAction}>
-                            <input type="hidden" name="ctro_id" value={ctro.id} />
-                            <Button type="submit" variant="ghost">
-                              Delete
-                            </Button>
-                          </form>
+                        {activeView === "archive" && (
+                          <details className="rounded-md border border-zinc-200 px-2 py-2 text-xs text-zinc-600">
+                            <summary className="cursor-pointer select-none">Lines ▾</summary>
+                            <div className="mt-2 space-y-2">
+                              {(archiveLineMap.get(ctro.id) ?? []).length === 0 ? (
+                                <div className="text-zinc-500">No lines found.</div>
+                              ) : (
+                                <table className="w-full border-collapse border border-zinc-200 text-xs">
+                                  <thead>
+                                    <tr className="bg-zinc-100">
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        Depot
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        Center
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        Waybill
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        CTRO Ref
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-right">
+                                        Bags
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-right">
+                                        Tonnage
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-right">
+                                        Total
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(archiveLineMap.get(ctro.id) ?? []).map((line) => (
+                                      <tr key={line.id}>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {(Array.isArray(line.depot)
+                                            ? line.depot[0]?.name
+                                            : (line.depot as { name?: string } | null)?.name) ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {(Array.isArray(line.center)
+                                            ? line.center[0]?.name
+                                            : (line.center as { name?: string } | null)?.name) ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {line.waybill_no ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {line.ctro_ref_no ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1 text-right">
+                                          {formatBags(Number(line.bags ?? 0))}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1 text-right">
+                                          {formatTonnage(Number(line.tonnage ?? 0))}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1 text-right">
+                                          {formatMoney(Number(line.line_total ?? 0))}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </details>
                         )}
                       </TableCell>
                     </TableRow>
