@@ -159,7 +159,7 @@ export default async function CtroPrintCocoaBodPage({
           <tr className="bg-zinc-100">
             <th className="border border-zinc-200 px-2 py-1 text-left">Region</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">District</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">T.O.P</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">T.O.P (GHS)</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">C.T.O</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">C.W.C</th>
@@ -167,11 +167,11 @@ export default async function CtroPrintCocoaBodPage({
             <th className="border border-zinc-200 px-2 py-1 text-left">Date</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Tonn.</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Cost</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Evacuation</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Producer Price</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Buyers&#39; Margin</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Total</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Cost (GHS)</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Evacuation (GHS)</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Producer Price (GHS)</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Buyers&#39; Margin (GHS)</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Total (GHS)</th>
           </tr>
         </thead>
         <tbody>
@@ -267,7 +267,7 @@ export default async function CtroPrintCocoaBodPage({
           </span>
         </div>
         <div className="flex items-center justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
-          <span>Grand Total</span>
+          <span>Total Amount (GHS)</span>
           <span>{formatMoney(Number(computedTotals.grandTotal))}</span>
         </div>
       </div>
