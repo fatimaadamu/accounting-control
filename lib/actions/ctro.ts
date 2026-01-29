@@ -12,7 +12,6 @@ type CtroLineInput = {
   ctro_ref_no?: string;
   cwc?: string;
   purity_cert_no?: string;
-  region_id?: string;
   depot_id?: string | null;
   takeover_center_id?: string;
   bag_weight_kg?: number;
@@ -59,9 +58,16 @@ const computeTotals = (lines: CtroLineInput[]) => {
     grand_total: 0,
   };
 
-  const normalizedLines = lines.map((line) => {
-    const bags = Number(line.bags || 0);
-    const tonnage = Number(line.tonnage || 0);
+  const normalizedLines = lines
+    .filter(
+      (line) =>
+        Boolean(line.depot_id) &&
+        Boolean(line.takeover_center_id) &&
+        Number(line.bags || 0) > 0
+    )
+    .map((line) => {
+      const bags = Number(line.bags || 0);
+      const tonnage = Number(line.tonnage || 0);
     const evacuation = round2(Number(line.evacuation_cost || 0));
     const producer = round2(Number(line.producer_price_value || 0));
     const margin = round2(Number(line.buyers_margin_value || 0));
@@ -81,25 +87,24 @@ const computeTotals = (lines: CtroLineInput[]) => {
     totals.total_buyers_margin += margin;
     totals.grand_total += lineTotal;
 
-    return {
-      ...line,
-      region_id: line.region_id ?? null,
-      depot_id: line.depot_id ?? null,
-      takeover_center_id: line.takeover_center_id ?? null,
-      bag_weight_kg: Number(line.bag_weight_kg ?? 16),
-      bags,
-      tonnage,
-      evacuation_cost: evacuation,
-      applied_producer_price_per_tonne: appliedProducer,
-      applied_buyer_margin_per_tonne: appliedMargin,
-      applied_secondary_evac_cost_per_tonne: appliedEvac,
-      applied_takeover_price_per_tonne: appliedTakeover,
-      producer_price_value: producer,
-      buyers_margin_value: margin,
-      line_total: lineTotal,
-      evacuation_treatment: line.evacuation_treatment ?? "company_paid",
-    };
-  });
+      return {
+        ...line,
+        depot_id: line.depot_id ?? null,
+        takeover_center_id: line.takeover_center_id ?? null,
+        bag_weight_kg: Number(line.bag_weight_kg ?? 16),
+        bags,
+        tonnage,
+        evacuation_cost: evacuation,
+        applied_producer_price_per_tonne: appliedProducer,
+        applied_buyer_margin_per_tonne: appliedMargin,
+        applied_secondary_evac_cost_per_tonne: appliedEvac,
+        applied_takeover_price_per_tonne: appliedTakeover,
+        producer_price_value: producer,
+        buyers_margin_value: margin,
+        line_total: lineTotal,
+        evacuation_treatment: line.evacuation_treatment ?? "company_paid",
+      };
+    });
 
   totals.total_tonnage = Number(totals.total_tonnage.toFixed(3));
   totals.total_evacuation = round2(totals.total_evacuation);
@@ -248,7 +253,6 @@ export const createCtroDraft = async (payload: {
       ctro_ref_no: line.ctro_ref_no ?? null,
       cwc: line.cwc ?? null,
       purity_cert_no: line.purity_cert_no ?? null,
-      region_id: line.region_id ?? null,
       depot_id: line.depot_id ?? null,
       takeover_center_id: line.takeover_center_id ?? null,
       bag_weight_kg: line.bag_weight_kg ?? 16,

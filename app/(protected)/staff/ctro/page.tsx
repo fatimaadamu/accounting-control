@@ -208,6 +208,12 @@ export default async function CtroPage({
     const remarks = String(formData.get("remarks") ?? "").trim();
     const linesJson = String(formData.get("lines_json") ?? "[]");
     const lines = JSON.parse(linesJson) as Array<Record<string, string>>;
+    const validLines = lines.filter(
+      (line) =>
+        Boolean(line.depot_id) &&
+        Boolean(line.takeover_center_id) &&
+        toNumber(line.bags ?? 0) > 0
+    );
 
     if (!ctroDate || !periodId) {
       redirect(
@@ -217,13 +223,10 @@ export default async function CtroPage({
       );
     }
 
-    if (
-      !lines.length ||
-      lines.some((line) => toNumber(line.bags ?? 0) <= 0)
-    ) {
+    if (!validLines.length) {
       redirect(
         `/staff/ctro?toast=error&message=${encodeURIComponent(
-          "Each CTRO line must include bags greater than 0."
+          "Add at least one valid line with depot, takeover center, and bags."
         )}`
       );
     }
@@ -237,7 +240,7 @@ export default async function CtroPage({
     }
 
     if (
-      lines.some(
+      validLines.some(
         (line) =>
           line.depot_id &&
           line.takeover_center_id &&
@@ -260,7 +263,7 @@ export default async function CtroPage({
         remarks: remarks || null,
         evacuation_payment_mode: "payable",
         evacuation_cash_account_id: null,
-        lines: lines.map((line) => ({
+        lines: validLines.map((line) => ({
           tod_time: line.tod_time,
           waybill_no: line.waybill_no,
           ctro_ref_no: line.ctro_ref_no,

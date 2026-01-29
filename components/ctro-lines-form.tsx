@@ -179,6 +179,9 @@ export default function CtroLinesForm({
 
   const totals = lines.reduce(
     (acc, line) => {
+      if (!line.depot_id || !line.takeover_center_id || parseNumber(line.bags) <= 0) {
+        return acc;
+      }
       const bags = parseNumber(line.bags);
       const tonnage = parseNumber(line.tonnage);
       const evacuation = parseNumber(line.evacuation_cost);
