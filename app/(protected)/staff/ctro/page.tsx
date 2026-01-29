@@ -61,6 +61,7 @@ export default async function CtroPage({
 
   if (periodError) {
     if (isSchemaCacheError(periodError)) {
+      console.error("[CTRO schema error]", periodError.message);
       return renderSchemaBanner();
     }
     throw new Error(periodError.message);
@@ -87,6 +88,7 @@ export default async function CtroPage({
 
   if (accountError) {
     if (isSchemaCacheError(accountError) || accountError.message.includes("Could not find the table")) {
+      console.error("[CTRO schema error]", accountError.message);
       return renderSchemaBanner();
     }
     throw new Error(accountError.message);
@@ -107,6 +109,7 @@ export default async function CtroPage({
 
   if (depotError) {
     if (isSchemaCacheError(depotError)) {
+      console.error("[CTRO schema error]", depotError.message);
       return renderSchemaBanner();
     }
     throw new Error(depotError.message);
@@ -119,6 +122,7 @@ export default async function CtroPage({
 
   if (centerError) {
     if (isSchemaCacheError(centerError)) {
+      console.error("[CTRO schema error]", centerError.message);
       return renderSchemaBanner();
     }
     throw new Error(centerError.message);
@@ -135,6 +139,7 @@ export default async function CtroPage({
 
   if (ctroError) {
     if (isSchemaCacheError(ctroError)) {
+      console.error("[CTRO schema error]", ctroError.message);
       return renderSchemaBanner();
     }
     throw new Error(ctroError.message);
