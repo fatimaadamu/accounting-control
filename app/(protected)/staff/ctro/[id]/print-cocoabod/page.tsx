@@ -36,13 +36,60 @@ export default async function CtroPrintCocoaBodPage({
     throw error;
   }
 
+  if (header.status !== "posted") {
+    return (
+      <div className="mx-auto max-w-3xl p-6 text-sm text-zinc-700">
+        CTRO print is available only after posting.
+      </div>
+    );
+  }
+
+  const totalsFromLines = lines.reduce(
+    (acc, line) => {
+      acc.totalBags += Number(line.bags ?? 0);
+      acc.totalTonnage += Number(line.tonnage ?? 0);
+      acc.totalProducer += Number(line.producer_price_value ?? 0);
+      acc.totalEvac += Number(line.evacuation_cost ?? 0);
+      acc.totalMargin += Number(line.buyers_margin_value ?? 0);
+      acc.grandTotal += Number(line.line_total ?? 0);
+      return acc;
+    },
+    {
+      totalBags: 0,
+      totalTonnage: 0,
+      totalProducer: 0,
+      totalEvac: 0,
+      totalMargin: 0,
+      grandTotal: 0,
+    }
+  );
+
+  const computedTotals = {
+    totalBags: totals?.total_bags ?? totalsFromLines.totalBags,
+    totalTonnage: totals?.total_tonnage ?? totalsFromLines.totalTonnage,
+    totalProducer: totals?.total_producer_price ?? totalsFromLines.totalProducer,
+    totalEvac: totals?.total_evacuation ?? totalsFromLines.totalEvac,
+    totalMargin: totals?.total_buyers_margin ?? totalsFromLines.totalMargin,
+    grandTotal: totals?.grand_total ?? totalsFromLines.grandTotal,
+  };
+
+  const companyName =
+    (header.company as { name?: string } | null)?.name ??
+    (header.company_id ? `Company ${header.company_id}` : "-");
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6 text-sm text-zinc-800">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="mx-auto max-w-6xl space-y-6 p-6 text-sm text-zinc-800">
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
           <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
-          <p className="text-sm font-medium">COCOA HOUSE – ACCRA</p>
-          <p className="text-sm font-medium">DATE: {formatDate(header.ctro_date)}</p>
+          <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
+          <p className="text-sm font-medium">COCOA TAKEN OVER RECEIPT (CTRO)</p>
+          <div className="pt-2 text-xs text-zinc-700">
+            <div>CTRO No: {header.ctro_no}</div>
+            <div>Date: {formatDate(header.ctro_date)}</div>
+            <div>Season: {header.season ?? "-"}</div>
+            <div>Company: {companyName}</div>
+          </div>
         </div>
         <PrintButton />
       </div>
@@ -51,20 +98,33 @@ export default async function CtroPrintCocoaBodPage({
         <thead>
           <tr className="bg-zinc-100">
             <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Takeover Center</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Waybill No</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">CWC</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Certificate</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Take-over Centre</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Secondary Evac Cost / Tonne
+              Producer / Tonne
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Takeover Price / Tonne
+              Producer Value
             </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Line Total</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Evacuation / Tonne
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Evacuation Value
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Buyer Margin / Tonne
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Buyer Margin Value
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Take-over / Tonne
+            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">
+              Line Total
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -80,12 +140,6 @@ export default async function CtroPrintCocoaBodPage({
                   ? line.center[0]?.name
                   : (line.center as { name?: string } | null)?.name) ?? "-"}
               </td>
-              <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1">{header.ctro_no}</td>
-              <td className="border border-zinc-200 px-2 py-1">{line.cwc ?? "-"}</td>
-              <td className="border border-zinc-200 px-2 py-1">
-                {line.purity_cert_no ?? "-"}
-              </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatBags(Number(line.bags ?? 0))}
               </td>
@@ -93,7 +147,22 @@ export default async function CtroPrintCocoaBodPage({
                 {formatTonnage(Number(line.tonnage ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_producer_price_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.producer_price_value ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.evacuation_cost ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_buyer_margin_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.buyers_margin_value ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
@@ -104,23 +173,42 @@ export default async function CtroPrintCocoaBodPage({
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr className="bg-zinc-50">
-            <td className="border border-zinc-200 px-2 py-1" colSpan={6}>
-              Totals
-            </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right">
-              {formatBags(Number(totals?.total_bags ?? 0))}
-            </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right">
-              {formatTonnage(Number(totals?.total_tonnage ?? 0))}
-            </td>
-            <td className="border border-zinc-200 px-2 py-1 text-right" colSpan={3}>
-              {formatMoney(Number(totals?.grand_total ?? 0))}
-            </td>
-          </tr>
-        </tfoot>
       </table>
+
+      <div className="grid gap-2 rounded-md border border-zinc-200 p-4 text-xs">
+        <div className="flex items-center justify-between">
+          <span>Total Bags</span>
+          <span className="font-medium">{formatBags(Number(computedTotals.totalBags))}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Total Tonnage</span>
+          <span className="font-medium">
+            {formatTonnage(Number(computedTotals.totalTonnage))}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Total Producer Value</span>
+          <span className="font-medium">
+            {formatMoney(Number(computedTotals.totalProducer))}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Total Evacuation Value</span>
+          <span className="font-medium">
+            {formatMoney(Number(computedTotals.totalEvac))}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Total Buyer Margin Value</span>
+          <span className="font-medium">
+            {formatMoney(Number(computedTotals.totalMargin))}
+          </span>
+        </div>
+        <div className="flex items-center justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
+          <span>GRAND TOTAL</span>
+          <span>{formatMoney(Number(computedTotals.grandTotal))}</span>
+        </div>
+      </div>
 
       <div className="pt-8 text-sm text-zinc-700">
         <div className="w-64 border-t border-zinc-400 pt-2">SNR. ACCOUNTS MANAGER</div>
