@@ -1,6 +1,6 @@
 import { ensureActiveCompanyId, requireCompanyAccess, requireUser } from "@/lib/auth";
 import { getCtroById } from "@/lib/data/ctro";
-import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
+import { formatBags, formatMoney, formatRate } from "@/lib/format";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import PrintNowButton from "@/components/print-now-button";
@@ -14,6 +14,12 @@ const formatDate = (value: string | null) => {
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
 };
+
+const formatTonnage4 = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  }).format(value);
 
 export default async function CtroPrintCocoaBodPage({
   params: rawParams,
@@ -150,24 +156,21 @@ export default async function CtroPrintCocoaBodPage({
       <table className="w-full border-collapse border border-zinc-200 text-xs">
         <thead>
           <tr className="bg-zinc-100">
-            <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Take-over Centre</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Region</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">District</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">T.O.P</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">CWC</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert No</th>
-            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert Date</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">C.T.O</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">C.W.C</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert.</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Date</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Evacuation / Tonne
-            </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Take-over Price / Tonne
-            </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Total
-            </th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Tonn.</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Cost</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Evacuation</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Producer Price</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Buyers&#39; Margin</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -175,19 +178,24 @@ export default async function CtroPrintCocoaBodPage({
             <tr key={line.id}>
               <td className="border border-zinc-200 px-2 py-1">
                 {(Array.isArray(line.depot)
+                  ? (line.depot[0]?.region as { name?: string } | null)?.name
+                  : ((line.depot as { region?: { name?: string } | null } | null)?.region as
+                      | { name?: string }
+                      | null)?.name) ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {(Array.isArray(line.depot)
                   ? line.depot[0]?.name
                   : (line.depot as { name?: string } | null)?.name) ?? "-"}
               </td>
-              <td className="border border-zinc-200 px-2 py-1">
-                {(Array.isArray(line.center)
-                  ? line.center[0]?.name
-                  : (line.center as { name?: string } | null)?.name) ?? "-"}
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
                 {line.waybill_no ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
-                {header.ctro_no ?? "-"}
+                {line.ctro_ref_no ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
                 {line.cwc ?? "-"}
@@ -196,19 +204,25 @@ export default async function CtroPrintCocoaBodPage({
                 {line.purity_cert_no ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
-                {formatDate(line.purity_cert_date)}
+                {formatDate(line.purity_cert_date ?? line.line_date)}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatBags(Number(line.bags ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatTonnage(Number(line.tonnage ?? 0))}
+                {formatTonnage4(Number(line.tonnage ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
+                {formatMoney(Number(line.evacuation_cost ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.producer_price_value ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.buyers_margin_value ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatMoney(Number(line.line_total ?? 0))}
@@ -216,6 +230,32 @@ export default async function CtroPrintCocoaBodPage({
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="bg-zinc-50 font-semibold">
+            <td className="border border-zinc-200 px-2 py-1" colSpan={8}>
+              TOTAL
+            </td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">
+              {formatBags(Number(computedTotals.totalBags))}
+            </td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">
+              {formatTonnage4(Number(computedTotals.totalTonnage))}
+            </td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">-</td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">
+              {formatMoney(Number(computedTotals.totalEvac))}
+            </td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">
+              {formatMoney(Number(computedTotals.totalProducer))}
+            </td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">
+              {formatMoney(Number(computedTotals.totalMargin))}
+            </td>
+            <td className="border border-zinc-200 px-2 py-1 text-right">
+              {formatMoney(Number(computedTotals.grandTotal))}
+            </td>
+          </tr>
+        </tfoot>
       </table>
 
       <div className="grid gap-2 rounded-md border border-zinc-200 p-4 text-xs">
@@ -226,23 +266,23 @@ export default async function CtroPrintCocoaBodPage({
         <div className="flex items-center justify-between">
           <span>Total Tonnage</span>
           <span className="font-medium">
-            {formatTonnage(Number(computedTotals.totalTonnage))}
+            {formatTonnage4(Number(computedTotals.totalTonnage))}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Total Producer Value</span>
-          <span className="font-medium">
-            {formatMoney(Number(computedTotals.totalProducer))}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span>Total Evacuation Value</span>
+          <span>Total Evacuation</span>
           <span className="font-medium">
             {formatMoney(Number(computedTotals.totalEvac))}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Total Buyer Margin Value</span>
+          <span>Total Producer Price</span>
+          <span className="font-medium">
+            {formatMoney(Number(computedTotals.totalProducer))}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Total Buyers&#39; Margin</span>
           <span className="font-medium">
             {formatMoney(Number(computedTotals.totalMargin))}
           </span>
