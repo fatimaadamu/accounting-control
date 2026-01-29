@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
+import CocoaAccountsForm from "@/components/cocoa-accounts-form";
 import ToastMessage from "@/components/toast-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { upsertCocoaAccountConfig } from "@/lib/actions/ctro-admin";
 import { ensureActiveCompanyId, requireCompanyRole, requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -471,13 +470,11 @@ export default async function AdminSetupPage({
       });
 
       revalidatePath("/admin/setup");
-      redirect("/admin/setup?toast=success&message=Cocoa%20accounts%20saved.");
+      return { ok: true, message: "Cocoa accounts saved." };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to save cocoa accounts.";
       console.error("[Cocoa accounts save error]", message, error);
-      redirect(
-        `/admin/setup?toast=error&message=${encodeURIComponent(message)}`
-      );
+      return { ok: false, message };
     }
   }
 
@@ -528,103 +525,11 @@ export default async function AdminSetupPage({
             <CardDescription>Configure cocoa accounts for CTRO posting.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={cocoaAccountsAction} className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="stock_field_account_id">Cocoa Stock - Field</Label>
-                <Select
-                  id="stock_field_account_id"
-                  name="stock_field_account_id"
-                  defaultValue={cocoaAccountConfig?.stock_field_account_id ?? ""}
-                >
-                  <option value="">Select account</option>
-                  {(accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_evac_account_id">Cocoa Stock - Evacuation</Label>
-                <Select
-                  id="stock_evac_account_id"
-                  name="stock_evac_account_id"
-                  defaultValue={cocoaAccountConfig?.stock_evac_account_id ?? ""}
-                >
-                  <option value="">Select account</option>
-                  {(accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_margin_account_id">Cocoa Stock - Margin</Label>
-                <Select
-                  id="stock_margin_account_id"
-                  name="stock_margin_account_id"
-                  defaultValue={cocoaAccountConfig?.stock_margin_account_id ?? ""}
-                >
-                  <option value="">Select account</option>
-                  {(accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="advances_account_id">Advances to Agents</Label>
-                <Select
-                  id="advances_account_id"
-                  name="advances_account_id"
-                  defaultValue={cocoaAccountConfig?.advances_account_id ?? ""}
-                >
-                  <option value="">Select account</option>
-                  {(accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="buyer_margin_income_account_id">Buyer/LBC Margin Income</Label>
-                <Select
-                  id="buyer_margin_income_account_id"
-                  name="buyer_margin_income_account_id"
-                  defaultValue={cocoaAccountConfig?.buyer_margin_income_account_id ?? ""}
-                >
-                  <option value="">Select account</option>
-                  {(accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="evacuation_payable_account_id">Evacuation Payable</Label>
-                <Select
-                  id="evacuation_payable_account_id"
-                  name="evacuation_payable_account_id"
-                  defaultValue={cocoaAccountConfig?.evacuation_payable_account_id ?? ""}
-                >
-                  <option value="">Select account</option>
-                  {(accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="md:col-span-2">
-                <Button type="submit" variant="outline">
-                  Save cocoa accounts
-                </Button>
-              </div>
-            </form>
+            <CocoaAccountsForm
+              action={cocoaAccountsAction}
+              accounts={accounts ?? []}
+              config={cocoaAccountConfig}
+            />
           </CardContent>
         </Card>
       ) : (
