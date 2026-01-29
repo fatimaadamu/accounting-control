@@ -56,6 +56,14 @@ type CtroLinesFormProps = {
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
+const parseNumber = (value: string | number | null | undefined) => {
+  const raw = String(value ?? "").replace(/,/g, "").trim();
+  if (!raw) {
+    return 0;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const emptyLine = (bagsPerTonne: number): CtroLine => ({
   depot_id: "",
@@ -171,12 +179,12 @@ export default function CtroLinesForm({
 
   const totals = lines.reduce(
     (acc, line) => {
-      const bags = Number(line.bags) || 0;
-      const tonnage = Number(line.tonnage) || 0;
-      const evacuation = Number(line.evacuation_cost) || 0;
-      const producer = Number(line.producer_price_value) || 0;
-      const margin = Number(line.buyers_margin_value) || 0;
-      const lineTotal = round2(Number(line.line_total) || 0);
+      const bags = parseNumber(line.bags);
+      const tonnage = parseNumber(line.tonnage);
+      const evacuation = parseNumber(line.evacuation_cost);
+      const producer = parseNumber(line.producer_price_value);
+      const margin = parseNumber(line.buyers_margin_value);
+      const lineTotal = round2(parseNumber(line.line_total));
       acc.total_bags += bags;
       acc.total_tonnage += tonnage;
       acc.total_evacuation += evacuation;
