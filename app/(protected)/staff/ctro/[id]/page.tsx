@@ -27,7 +27,11 @@ export default async function CtroDetailPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireUser();
-  if (!params?.id || params.id === "undefined") {
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    );
+  if (!params?.id || params.id === "undefined" || !isUuid(params.id)) {
     notFound();
   }
   const companyId = await ensureActiveCompanyId(user.id, `/staff/ctro/${params.id}`);
