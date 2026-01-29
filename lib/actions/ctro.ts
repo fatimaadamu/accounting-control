@@ -12,6 +12,7 @@ type CtroLineInput = {
   ctro_ref_no?: string;
   cwc?: string;
   purity_cert_no?: string;
+  purity_cert_date?: string | null;
   depot_id?: string | null;
   takeover_center_id?: string;
   bag_weight_kg?: number;
@@ -253,6 +254,7 @@ export const createCtroDraft = async (payload: {
       ctro_ref_no: line.ctro_ref_no ?? null,
       cwc: line.cwc ?? null,
       purity_cert_no: line.purity_cert_no ?? null,
+      purity_cert_date: line.purity_cert_date ?? null,
       depot_id: line.depot_id ?? null,
       takeover_center_id: line.takeover_center_id ?? null,
       bag_weight_kg: line.bag_weight_kg ?? 16,

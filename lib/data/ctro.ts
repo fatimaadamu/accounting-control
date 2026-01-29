@@ -12,6 +12,7 @@ type CtroLine = {
   ctro_ref_no: string | null;
   cwc: string | null;
   purity_cert_no: string | null;
+  purity_cert_date: string | null;
   line_date: string | null;
   bags: number | null;
   tonnage: number | null;
@@ -73,7 +74,7 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
   const { data: lines, error: lineError } = await supabaseAdmin()
     .from("ctro_lines")
     .select(
-      "id, depot_id, depot:cocoa_depots ( name ), center:takeover_centers ( name ), tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, line_date, bags, tonnage, applied_producer_price_per_tonne, applied_buyer_margin_per_tonne, applied_secondary_evac_cost_per_tonne, applied_takeover_price_per_tonne, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
+      "id, depot_id, depot:cocoa_depots ( name ), center:takeover_centers ( name ), tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, purity_cert_date, line_date, bags, tonnage, applied_producer_price_per_tonne, applied_buyer_margin_per_tonne, applied_secondary_evac_cost_per_tonne, applied_takeover_price_per_tonne, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
     )
     .eq("ctro_id", ctroId)
     .order("line_date", { ascending: true });
@@ -86,7 +87,7 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
     const { data: fallbackLines, error: fallbackError } = await supabaseAdmin()
       .from("ctro_lines")
       .select(
-        "id, depot_id, takeover_center_id, tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, line_date, bags, tonnage, applied_producer_price_per_tonne, applied_buyer_margin_per_tonne, applied_secondary_evac_cost_per_tonne, applied_takeover_price_per_tonne, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
+        "id, depot_id, takeover_center_id, tod_time, waybill_no, ctro_ref_no, cwc, purity_cert_no, purity_cert_date, line_date, bags, tonnage, applied_producer_price_per_tonne, applied_buyer_margin_per_tonne, applied_secondary_evac_cost_per_tonne, applied_takeover_price_per_tonne, producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment, line_total"
       )
       .eq("ctro_id", ctroId)
       .order("line_date", { ascending: true });

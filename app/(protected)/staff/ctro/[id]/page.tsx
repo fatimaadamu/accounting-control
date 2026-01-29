@@ -221,8 +221,12 @@ export default async function CtroDetailPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Depot</TableHead>
+                <TableHead>Center</TableHead>
                 <TableHead>Waybill</TableHead>
                 <TableHead>CTRO Ref</TableHead>
+                <TableHead>CWC</TableHead>
+                <TableHead>Purity Cert</TableHead>
+                <TableHead>Purity Date</TableHead>
                 <TableHead>Bags</TableHead>
                 <TableHead>Tonnage</TableHead>
                 <TableHead>Evacuation</TableHead>
@@ -234,7 +238,7 @@ export default async function CtroDetailPage({
             <TableBody>
               {lines.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-sm text-zinc-500">
+                  <TableCell colSpan={12} className="text-sm text-zinc-500">
                     No lines yet.
                   </TableCell>
                 </TableRow>
@@ -247,8 +251,16 @@ export default async function CtroDetailPage({
                         : (line.depot as { name?: string } | null)?.name) ??
                         (line.depot_id ?? "-")}
                     </TableCell>
+                    <TableCell>
+                      {(Array.isArray(line.center)
+                        ? line.center[0]?.name
+                        : (line.center as { name?: string } | null)?.name) ?? "-"}
+                    </TableCell>
                     <TableCell>{line.waybill_no ?? "-"}</TableCell>
                     <TableCell>{line.ctro_ref_no ?? "-"}</TableCell>
+                    <TableCell>{line.cwc ?? "-"}</TableCell>
+                    <TableCell>{line.purity_cert_no ?? "-"}</TableCell>
+                    <TableCell>{line.purity_cert_date ?? "-"}</TableCell>
                     <TableCell>{formatBags(Number(line.bags ?? 0))}</TableCell>
                     <TableCell>{formatTonnage(Number(line.tonnage ?? 0))}</TableCell>
                     <TableCell>{formatMoney(Number(line.evacuation_cost ?? 0))}</TableCell>

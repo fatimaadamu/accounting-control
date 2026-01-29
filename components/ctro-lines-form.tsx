@@ -29,6 +29,7 @@ type CtroLine = {
   ctro_ref_no: string;
   cwc: string;
   purity_cert_no: string;
+  purity_cert_date: string;
   bags: string;
   bag_weight_kg: string;
   tonnage: string;
@@ -73,6 +74,7 @@ const emptyLine = (bagsPerTonne: number): CtroLine => ({
   ctro_ref_no: "",
   cwc: "",
   purity_cert_no: "",
+  purity_cert_date: "",
   bags: "",
   bag_weight_kg: bagsPerTonne.toString(),
   tonnage: "",
@@ -327,37 +329,57 @@ export default function CtroLinesForm({
                     disabled={!canEditLines}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label>Waybill</Label>
-                  <Input
-                    value={line.waybill_no}
-                    onChange={(event) => updateLine(index, { waybill_no: event.target.value })}
-                    disabled={!canEditLines}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>CTRO Ref No</Label>
-                  <Input
-                    value={line.ctro_ref_no}
-                    onChange={(event) => updateLine(index, { ctro_ref_no: event.target.value })}
-                    disabled={!canEditLines}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>CWC</Label>
-                  <Input
-                    value={line.cwc}
-                    onChange={(event) => updateLine(index, { cwc: event.target.value })}
-                    disabled={!canEditLines}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Purity Cert No</Label>
-                  <Input
-                    value={line.purity_cert_no}
-                    onChange={(event) => updateLine(index, { purity_cert_no: event.target.value })}
-                    disabled={!canEditLines}
-                  />
+                <div className="md:col-span-4">
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+                    <p className="text-xs font-semibold uppercase text-zinc-500">References</p>
+                    <div className="mt-2 grid gap-3 md:grid-cols-5">
+                      <div className="space-y-1">
+                        <Label>Waybill</Label>
+                        <Input
+                          value={line.waybill_no}
+                          onChange={(event) => updateLine(index, { waybill_no: event.target.value })}
+                          disabled={!canEditLines}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>CTRO Ref No</Label>
+                        <Input
+                          value={line.ctro_ref_no}
+                          onChange={(event) => updateLine(index, { ctro_ref_no: event.target.value })}
+                          disabled={!canEditLines}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>CWC</Label>
+                        <Input
+                          value={line.cwc}
+                          onChange={(event) => updateLine(index, { cwc: event.target.value })}
+                          disabled={!canEditLines}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Purity Cert No</Label>
+                        <Input
+                          value={line.purity_cert_no}
+                          onChange={(event) =>
+                            updateLine(index, { purity_cert_no: event.target.value })
+                          }
+                          disabled={!canEditLines}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Purity Cert Date</Label>
+                        <Input
+                          type="date"
+                          value={line.purity_cert_date}
+                          onChange={(event) =>
+                            updateLine(index, { purity_cert_date: event.target.value })
+                          }
+                          disabled={!canEditLines}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label>Bags</Label>

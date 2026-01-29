@@ -27,6 +27,9 @@ type ArchiveLine = {
   center?: { name?: string }[] | { name?: string } | null;
   waybill_no: string | null;
   ctro_ref_no: string | null;
+  cwc: string | null;
+  purity_cert_no: string | null;
+  purity_cert_date: string | null;
   bags: number | null;
   tonnage: number | null;
   line_total: number | null;
@@ -173,7 +176,7 @@ export default async function CtroPage({
     const { data: archivedLines, error: archivedLinesError } = await supabaseAdmin()
       .from("ctro_lines")
       .select(
-        "id, ctro_id, depot_id, depot:cocoa_depots ( name ), center:takeover_centers ( name ), waybill_no, ctro_ref_no, bags, tonnage, line_total"
+        "id, ctro_id, depot_id, depot:cocoa_depots ( name ), center:takeover_centers ( name ), waybill_no, ctro_ref_no, cwc, purity_cert_no, purity_cert_date, bags, tonnage, line_total"
       )
       .in(
         "ctro_id",
@@ -318,6 +321,7 @@ export default async function CtroPage({
           ctro_ref_no: line.ctro_ref_no,
           cwc: line.cwc,
           purity_cert_no: line.purity_cert_no,
+          purity_cert_date: line.purity_cert_date,
           depot_id: line.depot_id || null,
           takeover_center_id: line.takeover_center_id,
           bag_weight_kg: toNumber(line.bag_weight_kg) || 16,
@@ -443,6 +447,74 @@ export default async function CtroPage({
     }
   }
 
+  async function markPrintedAction(formData: FormData) {
+    "use server";
+    const selectedIds = formData
+      .getAll("ctro_id")
+      .map((value) => String(value))
+      .filter(Boolean);
+
+    if (selectedIds.length === 0) {
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "Select at least one CTRO to mark as printed."
+        )}`
+      );
+    }
+
+    try {
+      const user = await requireUser();
+      const activeCompanyId = await ensureActiveCompanyId(user.id, "/staff/ctro");
+      if (!activeCompanyId) {
+        redirect(
+          `/staff/ctro?toast=error&message=${encodeURIComponent("No active company.")}`
+        );
+      }
+      await requireCompanyAccess(user.id, activeCompanyId);
+
+      const { data: headers, error } = await supabaseAdmin()
+        .from("ctro_headers")
+        .select("id, company_id, print_count")
+        .in("id", selectedIds);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const foundHeaders = headers ?? [];
+      if (foundHeaders.length !== selectedIds.length) {
+        throw new Error("One or more CTROs were not found.");
+      }
+
+      const nowIso = new Date().toISOString();
+      for (const header of foundHeaders) {
+        if (header.company_id !== activeCompanyId) {
+          throw new Error("CTRO does not belong to the active company.");
+        }
+        const newCount = Number(header.print_count ?? 0) + 1;
+        const { error: updateError } = await supabaseAdmin()
+          .from("ctro_headers")
+          .update({
+            printed_at: nowIso,
+            printed_by: user.id,
+            print_count: newCount,
+          })
+          .eq("id", header.id);
+
+        if (updateError) {
+          throw new Error(updateError.message);
+        }
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to mark CTROs as printed.";
+      redirect(`/staff/ctro?toast=error&message=${encodeURIComponent(message)}`);
+    }
+
+    revalidatePath("/staff/ctro");
+    redirect("/staff/ctro?view=archive&toast=printed");
+  }
+
   return (
     <div className="space-y-6">
       {resolvedSearchParams?.toast && (
@@ -455,6 +527,8 @@ export default async function CtroPage({
               ? "CTRO submitted"
               : resolvedSearchParams.toast === "posted"
               ? "CTRO posted"
+              : resolvedSearchParams.toast === "printed"
+              ? "CTRO marked as printed"
               : resolvedSearchParams.toast === "deleted"
               ? "CTRO deleted"
               : resolvedSearchParams.message ?? "Action completed"
@@ -530,6 +604,13 @@ export default async function CtroPage({
               >
                 Archive (Downloaded)
               </Link>
+              {activeView === "active" && headers.length > 0 && (
+                <form id="markPrintedForm" action={markPrintedAction}>
+                  <Button type="submit" variant="outline">
+                    Mark as Printed
+                  </Button>
+                </form>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -537,6 +618,7 @@ export default async function CtroPage({
           <Table>
             <TableHeader>
               <TableRow>
+                {activeView === "active" && <TableHead></TableHead>}
                 <TableHead>Date</TableHead>
                 <TableHead>CTRO No</TableHead>
                 <TableHead>Season</TableHead>
@@ -550,7 +632,10 @@ export default async function CtroPage({
             <TableBody>
                 {(ctroHeaders ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-sm text-zinc-500">
+                    <TableCell
+                      colSpan={activeView === "active" ? 9 : 8}
+                      className="text-sm text-zinc-500"
+                    >
                       No CTROs yet.
                     </TableCell>
                   </TableRow>
@@ -561,6 +646,18 @@ export default async function CtroPage({
                   const displayTotals = totals ?? fallbackTotals;
                   return (
                     <TableRow key={ctro.id}>
+                      {activeView === "active" && (
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            name="ctro_id"
+                            value={ctro.id}
+                            form="markPrintedForm"
+                            className="h-4 w-4 rounded border-zinc-300 text-zinc-900"
+                            aria-label={`Select ${ctro.ctro_no ?? "CTRO"} for print`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>{ctro.ctro_date}</TableCell>
                       <TableCell>{ctro.ctro_no}</TableCell>
                       <TableCell>{ctro.season ?? "-"}</TableCell>
@@ -639,6 +736,15 @@ export default async function CtroPage({
                                       <th className="border border-zinc-200 px-2 py-1 text-left">
                                         CTRO Ref
                                       </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        CWC
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        Purity Cert
+                                      </th>
+                                      <th className="border border-zinc-200 px-2 py-1 text-left">
+                                        Purity Date
+                                      </th>
                                       <th className="border border-zinc-200 px-2 py-1 text-right">
                                         Bags
                                       </th>
@@ -668,6 +774,15 @@ export default async function CtroPage({
                                         </td>
                                         <td className="border border-zinc-200 px-2 py-1">
                                           {line.ctro_ref_no ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {line.cwc ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {line.purity_cert_no ?? "-"}
+                                        </td>
+                                        <td className="border border-zinc-200 px-2 py-1">
+                                          {line.purity_cert_date ?? "-"}
                                         </td>
                                         <td className="border border-zinc-200 px-2 py-1 text-right">
                                           {formatBags(Number(line.bags ?? 0))}

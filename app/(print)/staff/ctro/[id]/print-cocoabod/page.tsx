@@ -57,23 +57,21 @@ export default async function CtroPrintCocoaBodPage({
     );
   }
 
-  if (!header.printed_at) {
-    const currentCount = Number(header.print_count ?? 0) || 0;
-    const { error: printError } = await supabaseAdmin()
-      .from("ctro_headers")
-      .update({
-        printed_at: new Date().toISOString(),
-        printed_by: user.id,
-        print_count: currentCount + 1,
-      })
-      .eq("id", header.id);
+  const currentCount = Number(header.print_count ?? 0) || 0;
+  const { error: printError } = await supabaseAdmin()
+    .from("ctro_headers")
+    .update({
+      printed_at: new Date().toISOString(),
+      printed_by: user.id,
+      print_count: currentCount + 1,
+    })
+    .eq("id", header.id);
 
-    if (printError) {
-      console.error("[CTRO print update error]", printError.message, {
-        ctroId: header.id,
-        companyId,
-      });
-    }
+  if (printError) {
+    console.error("[CTRO print update error]", printError.message, {
+      ctroId: header.id,
+      companyId,
+    });
   }
 
   const totalsFromLines = lines.reduce(
