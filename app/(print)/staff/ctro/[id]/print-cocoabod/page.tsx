@@ -15,10 +15,10 @@ const formatDate = (value: string | null) => {
   return `${day}/${month}/${year}`;
 };
 
-const formatTonnage4 = (value: number) =>
+const formatTonnage3 = (value: number) =>
   new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
   }).format(value);
 
 export default async function CtroPrintCocoaBodPage({
@@ -211,7 +211,7 @@ export default async function CtroPrintCocoaBodPage({
                 {formatBags(Number(line.bags ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatTonnage4(Number(line.tonnage ?? 0))}
+                {formatTonnage3(Number(line.tonnage ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
@@ -240,7 +240,7 @@ export default async function CtroPrintCocoaBodPage({
               {formatBags(Number(computedTotals.totalBags))}
             </td>
             <td className="border border-zinc-200 px-2 py-1 text-right">
-              {formatTonnage4(Number(computedTotals.totalTonnage))}
+              {formatTonnage3(Number(computedTotals.totalTonnage))}
             </td>
             <td className="border border-zinc-200 px-2 py-1 text-right">-</td>
             <td className="border border-zinc-200 px-2 py-1 text-right">
@@ -267,7 +267,7 @@ export default async function CtroPrintCocoaBodPage({
         <div className="flex items-center justify-between">
           <span>Total Tonnage</span>
           <span className="font-medium">
-            {formatTonnage4(Number(computedTotals.totalTonnage))}
+            {formatTonnage3(Number(computedTotals.totalTonnage))}
           </span>
         </div>
         <div className="flex items-center justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
