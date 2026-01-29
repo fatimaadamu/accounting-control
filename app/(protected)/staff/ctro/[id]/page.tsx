@@ -63,8 +63,21 @@ export default async function CtroDetailPage({
     ({ header, lines, totals } = data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    if (message) {
+      console.error("[CTRO detail error]", message, {
+        ctroId: params.id,
+        companyId,
+      });
+    }
     if (isSchemaCacheError({ message })) {
       return renderSchemaBanner();
+    }
+    if (message.includes("CTRO not found") || message.includes("CTRO does not belong")) {
+      redirect(
+        `/staff/ctro?toast=error&message=${encodeURIComponent(
+          "CTRO not found for the active company."
+        )}`
+      );
     }
     throw error;
   }

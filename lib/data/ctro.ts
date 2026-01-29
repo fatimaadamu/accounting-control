@@ -15,11 +15,15 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
     .single();
 
   if (headerError || !header) {
-    throw new Error(headerError?.message ?? "CTRO not found.");
+    throw new Error(
+      headerError?.message ?? `CTRO not found. id=${ctroId}`
+    );
   }
 
   if (companyId && header.company_id !== companyId) {
-    throw new Error("CTRO does not belong to the active company.");
+    throw new Error(
+      `CTRO does not belong to the active company. id=${ctroId} company=${companyId}`
+    );
   }
 
   const { data: lines, error: lineError } = await supabaseAdmin()
