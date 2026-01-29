@@ -115,6 +115,13 @@ export default async function CtroPrintCocoaBodPage({
           .print-hidden {
             display: none !important;
           }
+          header,
+          nav,
+          .app-header,
+          .site-header,
+          .main-header {
+            display: none !important;
+          }
           body {
             margin: 0;
           }
