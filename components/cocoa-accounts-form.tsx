@@ -38,6 +38,9 @@ type CocoaAccountsFormState = {
   evacuation_payable_account_id: string;
 };
 
+const selectValueClass = (value: string) =>
+  value ? "text-red-600" : "text-zinc-500";
+
 export default function CocoaAccountsForm({
   action,
   accounts,
@@ -99,6 +102,7 @@ export default function CocoaAccountsForm({
             id="stock_field_account_id"
             name="stock_field_account_id"
             value={formState.stock_field_account_id}
+            className={selectValueClass(formState.stock_field_account_id)}
             onChange={(event) =>
               setFormState((prev) => ({
                 ...prev,
@@ -120,6 +124,7 @@ export default function CocoaAccountsForm({
             id="stock_evac_account_id"
             name="stock_evac_account_id"
             value={formState.stock_evac_account_id}
+            className={selectValueClass(formState.stock_evac_account_id)}
             onChange={(event) =>
               setFormState((prev) => ({
                 ...prev,
@@ -141,6 +146,7 @@ export default function CocoaAccountsForm({
             id="stock_margin_account_id"
             name="stock_margin_account_id"
             value={formState.stock_margin_account_id}
+            className={selectValueClass(formState.stock_margin_account_id)}
             onChange={(event) =>
               setFormState((prev) => ({
                 ...prev,
@@ -162,6 +168,7 @@ export default function CocoaAccountsForm({
             id="advances_account_id"
             name="advances_account_id"
             value={formState.advances_account_id}
+            className={selectValueClass(formState.advances_account_id)}
             onChange={(event) =>
               setFormState((prev) => ({
                 ...prev,
@@ -183,6 +190,7 @@ export default function CocoaAccountsForm({
             id="buyer_margin_income_account_id"
             name="buyer_margin_income_account_id"
             value={formState.buyer_margin_income_account_id}
+            className={selectValueClass(formState.buyer_margin_income_account_id)}
             onChange={(event) =>
               setFormState((prev) => ({
                 ...prev,
@@ -204,6 +212,7 @@ export default function CocoaAccountsForm({
             id="evacuation_payable_account_id"
             name="evacuation_payable_account_id"
             value={formState.evacuation_payable_account_id}
+            className={selectValueClass(formState.evacuation_payable_account_id)}
             onChange={(event) =>
               setFormState((prev) => ({
                 ...prev,
