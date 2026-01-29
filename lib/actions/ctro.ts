@@ -13,7 +13,6 @@ type CtroLineInput = {
   cwc?: string;
   purity_cert_no?: string;
   region_id?: string;
-  district_id?: string;
   depot_id?: string | null;
   takeover_center_id?: string;
   bag_weight_kg?: number;
@@ -85,7 +84,6 @@ const computeTotals = (lines: CtroLineInput[]) => {
     return {
       ...line,
       region_id: line.region_id ?? null,
-      district_id: line.district_id ?? null,
       depot_id: line.depot_id ?? null,
       takeover_center_id: line.takeover_center_id ?? null,
       bag_weight_kg: Number(line.bag_weight_kg ?? 16),
@@ -251,7 +249,6 @@ export const createCtroDraft = async (payload: {
       cwc: line.cwc ?? null,
       purity_cert_no: line.purity_cert_no ?? null,
       region_id: line.region_id ?? null,
-      district_id: line.district_id ?? null,
       depot_id: line.depot_id ?? null,
       takeover_center_id: line.takeover_center_id ?? null,
       bag_weight_kg: line.bag_weight_kg ?? 16,
