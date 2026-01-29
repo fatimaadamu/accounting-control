@@ -99,8 +99,8 @@ export default async function CtroPage({
     !cocoaAccounts.stock_field_account_id ||
     !cocoaAccounts.stock_evac_account_id ||
     !cocoaAccounts.stock_margin_account_id ||
-    !cocoaAccounts.advances_account_id ||
-    !cocoaAccounts.buyer_margin_income_account_id;
+    !cocoaAccounts.buyer_margin_income_account_id ||
+    !cocoaAccounts.evacuation_payable_account_id;
 
   const { data: depots, error: depotError } = await supabaseAdmin()
     .from("cocoa_depots")
@@ -466,7 +466,8 @@ export default async function CtroPage({
                         {ctro.status === "draft" &&
                           isAdmin &&
                           canSubmitDraft &&
-                          canPostSubmitted && (
+                          canPostSubmitted &&
+                          !missingCtroAccounts && (
                             <form action={submitAndPostAction}>
                               <input type="hidden" name="ctro_id" value={ctro.id} />
                               <Button type="submit">
@@ -474,7 +475,7 @@ export default async function CtroPage({
                               </Button>
                             </form>
                           )}
-                        {ctro.status === "submitted" && canPostSubmitted && (
+                        {ctro.status === "submitted" && canPostSubmitted && !missingCtroAccounts && (
                           <form action={postAction}>
                             <input type="hidden" name="ctro_id" value={ctro.id} />
                             <Button type="submit" variant="outline">

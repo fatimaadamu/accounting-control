@@ -393,7 +393,7 @@ export const postCtro = async (
 
   const { data: lines, error: lineError } = await supabaseAdmin()
     .from("ctro_lines")
-    .select("producer_price_value, buyers_margin_value, evacuation_cost, evacuation_treatment")
+    .select("producer_price_value, buyers_margin_value, evacuation_cost")
     .eq("ctro_id", ctro_id);
 
   if (lineError) {
@@ -402,46 +402,27 @@ export const postCtro = async (
 
   let producerPrice = 0;
   let buyersMargin = 0;
-  let evacuationPaid = 0;
-  let evacuationDeducted = 0;
-
+  let totalEvacuation = 0;
   for (const line of lines ?? []) {
     producerPrice += Number(line.producer_price_value || 0);
     buyersMargin += Number(line.buyers_margin_value || 0);
     const evacuation = Number(line.evacuation_cost || 0);
-    if (line.evacuation_treatment === "deducted") {
-      evacuationDeducted += evacuation;
-    } else {
-      evacuationPaid += evacuation;
-    }
+    totalEvacuation += evacuation;
   }
 
   producerPrice = round2(producerPrice);
   buyersMargin = round2(buyersMargin);
-  evacuationPaid = round2(evacuationPaid);
-  evacuationDeducted = round2(evacuationDeducted);
+  totalEvacuation = round2(totalEvacuation);
 
   const accounts = await getCtroAccounts(header.company_id);
   if (
     !accounts?.stock_field_account_id ||
     !accounts.stock_margin_account_id ||
     !accounts.stock_evac_account_id ||
-    !accounts.advances_account_id ||
-    !accounts.buyer_margin_income_account_id
+    !accounts.buyer_margin_income_account_id ||
+    !accounts.evacuation_payable_account_id
   ) {
     throw new Error("Cocoa accounts are not configured. Ask Admin to run setup.");
-  }
-
-  if (evacuationPaid > 0 && header.evacuation_payment_mode !== "cash") {
-    if (!accounts.evacuation_payable_account_id) {
-      throw new Error("Evacuation payable account is not configured.");
-    }
-  }
-
-  if (evacuationPaid > 0 && header.evacuation_payment_mode === "cash") {
-    if (!header.evacuation_cash_account_id) {
-      throw new Error("Cash/Bank account is required for evacuation payment.");
-    }
   }
 
   const journalLines: Array<{ account_id: string; debit: number; credit: number }> = [];
@@ -451,11 +432,6 @@ export const postCtro = async (
       account_id: accounts.stock_field_account_id,
       debit: producerPrice,
       credit: 0,
-    });
-    journalLines.push({
-      account_id: accounts.advances_account_id,
-      debit: 0,
-      credit: producerPrice,
     });
   }
 
@@ -472,7 +448,6 @@ export const postCtro = async (
     });
   }
 
-  const totalEvacuation = round2(evacuationPaid + evacuationDeducted);
   if (totalEvacuation > 0) {
     journalLines.push({
       account_id: accounts.stock_evac_account_id,
@@ -481,26 +456,12 @@ export const postCtro = async (
     });
   }
 
-  if (evacuationPaid > 0) {
-    const creditAccount =
-      header.evacuation_payment_mode === "cash"
-        ? header.evacuation_cash_account_id
-        : accounts.evacuation_payable_account_id;
-    if (!creditAccount) {
-      throw new Error("Evacuation payable/cash account is required.");
-    }
+  const clearingTotal = round2(producerPrice + totalEvacuation);
+  if (clearingTotal > 0) {
     journalLines.push({
-      account_id: creditAccount,
+      account_id: accounts.evacuation_payable_account_id,
       debit: 0,
-      credit: evacuationPaid,
-    });
-  }
-
-  if (evacuationDeducted > 0) {
-    journalLines.push({
-      account_id: accounts.advances_account_id,
-      debit: 0,
-      credit: evacuationDeducted,
+      credit: clearingTotal,
     });
   }
 
