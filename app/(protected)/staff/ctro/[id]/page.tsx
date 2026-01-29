@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 
 import ToastMessage from "@/components/toast-message";
+import CtroReprintButton from "@/components/ctro-reprint-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,6 +18,7 @@ import { canAnyRole } from "@/lib/permissions";
 import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatTonnage } from "@/lib/format";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function CtroDetailPage({
   params: rawParams,
@@ -148,6 +150,51 @@ export default async function CtroDetailPage({
     redirect("/staff/ctro?toast=deleted");
   }
 
+  async function reprintAction(formData: FormData) {
+    "use server";
+    const ctroId = String(formData.get("ctro_id") ?? "");
+    try {
+      const user = await requireUser();
+      const activeCompanyId = await ensureActiveCompanyId(user.id, `/staff/ctro/${params.id}`);
+      if (!activeCompanyId) {
+        return { ok: false, message: "No active company." };
+      }
+      await requireCompanyAccess(user.id, activeCompanyId);
+      const { data: existing, error } = await supabaseAdmin()
+        .from("ctro_headers")
+        .select("id, company_id, print_count")
+        .eq("id", ctroId)
+        .single();
+
+      if (error || !existing) {
+        return { ok: false, message: "CTRO not found." };
+      }
+      if (existing.company_id !== activeCompanyId) {
+        return { ok: false, message: "CTRO does not belong to the active company." };
+      }
+
+      const newCount = Number(existing.print_count ?? 0) + 1;
+      const { error: updateError } = await supabaseAdmin()
+        .from("ctro_headers")
+        .update({
+          printed_at: new Date().toISOString(),
+          printed_by: user.id,
+          print_count: newCount,
+        })
+        .eq("id", ctroId);
+
+      if (updateError) {
+        return { ok: false, message: updateError.message };
+      }
+
+      revalidatePath(`/staff/ctro/${params.id}`);
+      return { ok: true, message: "CTRO reprinted." };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to reprint CTRO.";
+      return { ok: false, message };
+    }
+  }
+
   const agent = Array.isArray(header.cocoa_agents) ? header.cocoa_agents[0] : header.cocoa_agents;
 
   return (
@@ -175,7 +222,7 @@ export default async function CtroDetailPage({
           Back to CTRO list
         </Link>
         <div className="flex items-center gap-2">
-          {header.status === "posted" && (
+          {header.status === "posted" && !header.printed_at && (
             <Link
               href={`/staff/ctro/${params.id}/print-cocoabod`}
               className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
@@ -183,6 +230,9 @@ export default async function CtroDetailPage({
             >
               Print
             </Link>
+          )}
+          {header.status === "posted" && header.printed_at && (
+            <CtroReprintButton action={reprintAction} ctroId={header.id} />
           )}
         </div>
       </div>

@@ -3,6 +3,7 @@ import { getCtroById } from "@/lib/data/ctro";
 import { formatBags, formatMoney, formatRate, formatTonnage } from "@/lib/format";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import PrintNowButton from "@/components/print-now-button";
 
 const formatDate = (value: string | null) => {
   if (!value) return "-";
@@ -130,6 +131,9 @@ export default async function CtroPrintCocoaBodPage({
           }
         }
       `}</style>
+      <div className="print-hidden flex items-center justify-end">
+        <PrintNowButton />
+      </div>
       <div className="space-y-1">
         <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
         <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
@@ -176,7 +180,7 @@ export default async function CtroPrintCocoaBodPage({
                 {line.waybill_no ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
-                {line.ctro_ref_no ?? "-"}
+                {header.ctro_no ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
                 {line.cwc ?? "-"}

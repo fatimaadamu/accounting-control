@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 
 import CtroCreateForm from "@/components/ctro-create-form";
 import ToastMessage from "@/components/toast-message";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createCtroDraft, deleteCtroDraft, postCtro, submitCtro } from "@/lib/actions/ctro";
@@ -19,6 +18,7 @@ import { canAnyRole } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isSchemaCacheError, schemaCacheBannerMessage } from "@/lib/supabase/schema-cache";
 import CtroReprintButton from "@/components/ctro-reprint-button";
+import CtroActiveTable from "@/components/ctro-active-table";
 
 type ArchiveLine = {
   id: string;
@@ -244,6 +244,22 @@ export default async function CtroPage({
     }
   }
 
+  const activeRows = headers.map((ctro) => {
+    const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
+    const fallbackTotals = computedTotals.get(ctro.id);
+    const displayTotals = totals ?? fallbackTotals;
+    return {
+      id: ctro.id,
+      ctro_date: ctro.ctro_date,
+      ctro_no: ctro.ctro_no,
+      season: ctro.season ?? null,
+      status: ctro.status,
+      total_bags: Number(displayTotals?.total_bags ?? 0),
+      total_tonnage: Number(displayTotals?.total_tonnage ?? 0),
+      grand_total: Number(displayTotals?.grand_total ?? 0),
+    };
+  });
+
   async function createAction(formData: FormData) {
     "use server";
     const toNumber = (value: unknown) => {
@@ -447,74 +463,6 @@ export default async function CtroPage({
     }
   }
 
-  async function markPrintedAction(formData: FormData) {
-    "use server";
-    const selectedIds = formData
-      .getAll("ctro_id")
-      .map((value) => String(value))
-      .filter(Boolean);
-
-    if (selectedIds.length === 0) {
-      redirect(
-        `/staff/ctro?toast=error&message=${encodeURIComponent(
-          "Select at least one CTRO to mark as printed."
-        )}`
-      );
-    }
-
-    try {
-      const user = await requireUser();
-      const activeCompanyId = await ensureActiveCompanyId(user.id, "/staff/ctro");
-      if (!activeCompanyId) {
-        redirect(
-          `/staff/ctro?toast=error&message=${encodeURIComponent("No active company.")}`
-        );
-      }
-      await requireCompanyAccess(user.id, activeCompanyId);
-
-      const { data: headers, error } = await supabaseAdmin()
-        .from("ctro_headers")
-        .select("id, company_id, print_count")
-        .in("id", selectedIds);
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const foundHeaders = headers ?? [];
-      if (foundHeaders.length !== selectedIds.length) {
-        throw new Error("One or more CTROs were not found.");
-      }
-
-      const nowIso = new Date().toISOString();
-      for (const header of foundHeaders) {
-        if (header.company_id !== activeCompanyId) {
-          throw new Error("CTRO does not belong to the active company.");
-        }
-        const newCount = Number(header.print_count ?? 0) + 1;
-        const { error: updateError } = await supabaseAdmin()
-          .from("ctro_headers")
-          .update({
-            printed_at: nowIso,
-            printed_by: user.id,
-            print_count: newCount,
-          })
-          .eq("id", header.id);
-
-        if (updateError) {
-          throw new Error(updateError.message);
-        }
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to mark CTROs as printed.";
-      redirect(`/staff/ctro?toast=error&message=${encodeURIComponent(message)}`);
-    }
-
-    revalidatePath("/staff/ctro");
-    redirect("/staff/ctro?view=archive&toast=printed");
-  }
-
   return (
     <div className="space-y-6">
       {resolvedSearchParams?.toast && (
@@ -604,119 +552,74 @@ export default async function CtroPage({
               >
                 Archive (Downloaded)
               </Link>
-              {activeView === "active" && headers.length > 0 && (
-                <form id="markPrintedForm" action={markPrintedAction}>
-                  <Button type="submit" variant="outline">
-                    Mark as Printed
-                  </Button>
-                </form>
-              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {activeView === "active" && <TableHead></TableHead>}
-                <TableHead>Date</TableHead>
-                <TableHead>CTRO No</TableHead>
-                <TableHead>Season</TableHead>
-                <TableHead>Bags</TableHead>
-                <TableHead>Tonnage</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-                {(ctroHeaders ?? []).length === 0 ? (
+          {activeView == "active" ? (
+            <CtroActiveTable
+              rows={activeRows}
+              canSubmitDraft={canSubmitDraft}
+              canPostSubmitted={canPostSubmitted}
+              canDeleteDraft={canDeleteDraft}
+              isAdmin={isAdmin}
+              missingCtroAccounts={missingCtroAccounts}
+              submitAction={submitAction}
+              postAction={postAction}
+              submitAndPostAction={submitAndPostAction}
+              deleteAction={deleteAction}
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>CTRO No</TableHead>
+                  <TableHead>Season</TableHead>
+                  <TableHead>Bags</TableHead>
+                  <TableHead>Tonnage</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {headers.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={activeView === "active" ? 9 : 8}
-                      className="text-sm text-zinc-500"
-                    >
+                    <TableCell colSpan={8} className="text-sm text-zinc-500">
                       No CTROs yet.
                     </TableCell>
                   </TableRow>
                 ) : (
-                headers.map((ctro) => {
-                  const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
-                  const fallbackTotals = computedTotals.get(ctro.id);
-                  const displayTotals = totals ?? fallbackTotals;
-                  return (
-                    <TableRow key={ctro.id}>
-                      {activeView === "active" && (
+                  headers.map((ctro) => {
+                    const totals = Array.isArray(ctro.ctro_totals)
+                      ? ctro.ctro_totals[0]
+                      : ctro.ctro_totals;
+                    const fallbackTotals = computedTotals.get(ctro.id);
+                    const displayTotals = totals ?? fallbackTotals;
+                    return (
+                      <TableRow key={ctro.id}>
+                        <TableCell>{ctro.ctro_date}</TableCell>
+                        <TableCell>{ctro.ctro_no}</TableCell>
+                        <TableCell>{ctro.season ?? "-"}</TableCell>
+                        <TableCell>{formatBags(Number(displayTotals?.total_bags ?? 0))}</TableCell>
                         <TableCell>
-                          <input
-                            type="checkbox"
-                            name="ctro_id"
-                            value={ctro.id}
-                            form="markPrintedForm"
-                            className="h-4 w-4 rounded border-zinc-300 text-zinc-900"
-                            aria-label={`Select ${ctro.ctro_no ?? "CTRO"} for print`}
-                          />
+                          {formatTonnage(Number(displayTotals?.total_tonnage ?? 0))}
                         </TableCell>
-                      )}
-                      <TableCell>{ctro.ctro_date}</TableCell>
-                      <TableCell>{ctro.ctro_no}</TableCell>
-                      <TableCell>{ctro.season ?? "-"}</TableCell>
-                      <TableCell>{formatBags(Number(displayTotals?.total_bags ?? 0))}</TableCell>
-                      <TableCell>{formatTonnage(Number(displayTotals?.total_tonnage ?? 0))}</TableCell>
-                      <TableCell>{formatMoney(Number(displayTotals?.grand_total ?? 0))}</TableCell>
-                      <TableCell>{ctro.status}</TableCell>
-                      <TableCell className="space-y-2">
-                        <Link
-                          href={`/staff/ctro/${ctro.id}`}
-                          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                        >
-                          View
-                        </Link>
-                        {activeView === "archive" ? (
+                        <TableCell>
+                          {formatMoney(Number(displayTotals?.grand_total ?? 0))}
+                        </TableCell>
+                        <TableCell>{ctro.status}</TableCell>
+                        <TableCell className="space-y-2">
+                          <Link
+                            href={`/staff/ctro/${ctro.id}`}
+                            className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                          >
+                            View
+                          </Link>
                           <CtroReprintButton action={reprintAction} ctroId={ctro.id} />
-                        ) : (
-                          <>
-                            {ctro.status === "draft" && canSubmitDraft && (
-                              <form action={submitAction}>
-                                <input type="hidden" name="ctro_id" value={ctro.id} />
-                                <Button type="submit" variant="outline">
-                                  Submit
-                                </Button>
-                              </form>
-                            )}
-                            {ctro.status === "draft" &&
-                              isAdmin &&
-                              canSubmitDraft &&
-                              canPostSubmitted &&
-                              !missingCtroAccounts && (
-                                <form action={submitAndPostAction}>
-                                  <input type="hidden" name="ctro_id" value={ctro.id} />
-                                  <Button type="submit">
-                                    Submit &amp; Post
-                                  </Button>
-                                </form>
-                              )}
-                            {ctro.status === "submitted" && canPostSubmitted && !missingCtroAccounts && (
-                              <form action={postAction}>
-                                <input type="hidden" name="ctro_id" value={ctro.id} />
-                                <Button type="submit" variant="outline">
-                                  Post
-                                </Button>
-                              </form>
-                            )}
-                            {ctro.status === "draft" && canDeleteDraft && (
-                              <form action={deleteAction}>
-                                <input type="hidden" name="ctro_id" value={ctro.id} />
-                                <Button type="submit" variant="ghost">
-                                  Delete
-                                </Button>
-                              </form>
-                            )}
-                          </>
-                        )}
-                        {activeView === "archive" && (
                           <details className="rounded-md border border-zinc-200 px-2 py-2 text-xs text-zinc-600">
-                            <summary className="cursor-pointer select-none">Lines ▾</summary>
+                            <summary className="cursor-pointer select-none">Lines ?</summary>
                             <div className="mt-2 space-y-2">
                               {(archiveLineMap.get(ctro.id) ?? []).length === 0 ? (
                                 <div className="text-zinc-500">No lines found.</div>
@@ -762,12 +665,14 @@ export default async function CtroPage({
                                         <td className="border border-zinc-200 px-2 py-1">
                                           {(Array.isArray(line.depot)
                                             ? line.depot[0]?.name
-                                            : (line.depot as { name?: string } | null)?.name) ?? "-"}
+                                            : (line.depot as { name?: string } | null)?.name) ??
+                                            "-"}
                                         </td>
                                         <td className="border border-zinc-200 px-2 py-1">
                                           {(Array.isArray(line.center)
                                             ? line.center[0]?.name
-                                            : (line.center as { name?: string } | null)?.name) ?? "-"}
+                                            : (line.center as { name?: string } | null)?.name) ??
+                                            "-"}
                                         </td>
                                         <td className="border border-zinc-200 px-2 py-1">
                                           {line.waybill_no ?? "-"}
@@ -800,14 +705,14 @@ export default async function CtroPage({
                               )}
                             </div>
                           </details>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
