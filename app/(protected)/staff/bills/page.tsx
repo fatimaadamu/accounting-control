@@ -369,7 +369,7 @@ export default async function BillsPage({
                           canPostSubmitted && (
                             <form action={submitAndPostAction}>
                               <input type="hidden" name="bill_id" value={bill.id} />
-                              <Button type="submit" variant="default">
+                              <Button type="submit">
                                 Submit &amp; Post
                               </Button>
                             </form>

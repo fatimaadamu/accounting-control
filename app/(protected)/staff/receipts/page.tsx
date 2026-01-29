@@ -448,7 +448,7 @@ export default async function ReceiptsPage({
                           canPostSubmitted && (
                             <form action={submitAndPostAction}>
                               <input type="hidden" name="receipt_id" value={receipt.id} />
-                              <Button type="submit" variant="default">
+                              <Button type="submit">
                                 Submit &amp; Post
                               </Button>
                             </form>

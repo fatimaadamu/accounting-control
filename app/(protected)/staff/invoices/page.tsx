@@ -439,7 +439,7 @@ export default async function InvoicesPage({
                         {invoice.status === "draft" && isAdmin && canSubmitDraft && canPostSubmitted && (
                           <form action={submitAndPostAction}>
                             <input type="hidden" name="invoice_id" value={invoice.id} />
-                            <Button type="submit" variant="default">
+                            <Button type="submit">
                               Submit &amp; Post
                             </Button>
                           </form>

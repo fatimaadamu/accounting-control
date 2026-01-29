@@ -446,7 +446,7 @@ export default async function PaymentVouchersPage({
                           canPostSubmitted && (
                             <form action={submitAndPostAction}>
                               <input type="hidden" name="voucher_id" value={voucher.id} />
-                              <Button type="submit" variant="default">
+                              <Button type="submit">
                                 Submit &amp; Post
                               </Button>
                             </form>

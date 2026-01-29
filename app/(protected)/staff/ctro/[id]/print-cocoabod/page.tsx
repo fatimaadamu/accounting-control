@@ -54,14 +54,14 @@ export default async function CtroPrintCocoaBodPage({
           {lines.map((line) => (
             <tr key={line.id}>
               <td className="border border-zinc-200 px-2 py-1">
-                {Array.isArray(line.cocoa_depots)
-                  ? line.cocoa_depots[0]?.name ?? "-"
-                  : line.cocoa_depots?.name ?? "-"}
+                {(Array.isArray(line.depot)
+                  ? line.depot[0]?.name
+                  : (line.depot as { name?: string } | null)?.name) ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">
-                {Array.isArray(line.takeover_centers)
-                  ? line.takeover_centers[0]?.name ?? "-"
-                  : line.takeover_centers?.name ?? "-"}
+                {(Array.isArray(line.center)
+                  ? line.center[0]?.name
+                  : (line.center as { name?: string } | null)?.name) ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{header.ctro_no}</td>

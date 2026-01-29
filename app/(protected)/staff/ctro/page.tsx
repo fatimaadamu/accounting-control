@@ -181,7 +181,6 @@ export default async function CtroPage({
           ctro_ref_no: line.ctro_ref_no,
           cwc: line.cwc,
           purity_cert_no: line.purity_cert_no,
-          region_id: null,
           depot_id: line.depot_id || null,
           takeover_center_id: line.takeover_center_id,
           bag_weight_kg: Number(line.bag_weight_kg) || 16,
@@ -380,7 +379,7 @@ export default async function CtroPage({
                           canPostSubmitted && (
                             <form action={submitAndPostAction}>
                               <input type="hidden" name="ctro_id" value={ctro.id} />
-                              <Button type="submit" variant="default">
+                              <Button type="submit">
                                 Submit &amp; Post
                               </Button>
                             </form>

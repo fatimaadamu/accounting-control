@@ -51,9 +51,7 @@ export default async function CtroPrintInternalPage({
           {lines.map((line) => (
             <tr key={line.id}>
               <td className="border border-zinc-200 px-2 py-1">
-                {Array.isArray(line.cocoa_depots)
-                  ? line.cocoa_depots[0]?.name ?? "-"
-                  : line.cocoa_depots?.name ?? "-"}
+                {(line.depot as { name?: string } | null)?.name ?? "-"}
               </td>
               <td className="border border-zinc-200 px-2 py-1">{line.tod_time ?? "-"}</td>
               <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>

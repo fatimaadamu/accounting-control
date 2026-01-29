@@ -182,9 +182,9 @@ export default async function CtroDetailPage({
                 lines.map((line) => (
                   <TableRow key={line.id}>
                     <TableCell>
-                      {Array.isArray(line.cocoa_depots)
-                        ? line.cocoa_depots[0]?.name ?? "-"
-                        : line.cocoa_depots?.name ?? "-"}
+                      {(Array.isArray(line.depot)
+                        ? line.depot[0]?.name
+                        : (line.depot as { name?: string } | null)?.name) ?? "-"}
                     </TableCell>
                     <TableCell>{line.waybill_no ?? "-"}</TableCell>
                     <TableCell>{line.ctro_ref_no ?? "-"}</TableCell>
