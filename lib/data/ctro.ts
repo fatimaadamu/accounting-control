@@ -35,7 +35,7 @@ export const getCtroById = async (ctroId: string, companyId?: string) => {
     .order("line_date", { ascending: true });
 
   if (lineError) {
-    throw new Error(lineError.message);
+    throw new Error(`Unable to load CTRO lines: ${lineError.message}`);
   }
 
   const { data: totals } = await supabaseAdmin()
