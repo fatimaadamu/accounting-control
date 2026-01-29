@@ -159,20 +159,15 @@ export default async function CtroDetailPage({
           Back to CTRO list
         </Link>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/staff/ctro/${params.id}/print-internal`}
-            className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-            target="_blank"
-          >
-            Print Internal
-          </Link>
-          <Link
-            href={`/staff/ctro/${params.id}/print-cocoabod`}
-            className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-            target="_blank"
-          >
-            Print CocoaBod
-          </Link>
+          {header.status === "posted" && (
+            <Link
+              href={`/staff/ctro/${params.id}/print-cocoabod`}
+              className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              target="_blank"
+            >
+              Print
+            </Link>
+          )}
         </div>
       </div>
 
