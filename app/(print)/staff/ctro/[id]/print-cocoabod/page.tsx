@@ -141,31 +141,21 @@ export default async function CtroPrintCocoaBodPage({
           <tr className="bg-zinc-100">
             <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
             <th className="border border-zinc-200 px-2 py-1 text-left">Take-over Centre</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">CWC</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert No</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert Date</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
             <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Producer / Tonne
-            </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Producer Value
-            </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
               Evacuation / Tonne
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Evacuation Value
+              Take-over Price / Tonne
             </th>
             <th className="border border-zinc-200 px-2 py-1 text-right">
-              Buyer Margin / Tonne
-            </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Buyer Margin Value
-            </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Take-over / Tonne
-            </th>
-            <th className="border border-zinc-200 px-2 py-1 text-right">
-              Line Total
+              Total
             </th>
           </tr>
         </thead>
@@ -182,6 +172,21 @@ export default async function CtroPrintCocoaBodPage({
                   ? line.center[0]?.name
                   : (line.center as { name?: string } | null)?.name) ?? "-"}
               </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {line.waybill_no ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {line.ctro_ref_no ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {line.cwc ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {line.purity_cert_no ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {formatDate(line.purity_cert_date)}
+              </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatBags(Number(line.bags ?? 0))}
               </td>
@@ -189,22 +194,7 @@ export default async function CtroPrintCocoaBodPage({
                 {formatTonnage(Number(line.tonnage ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatRate(Number(line.applied_producer_price_per_tonne ?? 0))}
-              </td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatMoney(Number(line.producer_price_value ?? 0))}
-              </td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
-              </td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatMoney(Number(line.evacuation_cost ?? 0))}
-              </td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatRate(Number(line.applied_buyer_margin_per_tonne ?? 0))}
-              </td>
-              <td className="border border-zinc-200 px-2 py-1 text-right">
-                {formatMoney(Number(line.buyers_margin_value ?? 0))}
               </td>
               <td className="border border-zinc-200 px-2 py-1 text-right">
                 {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
