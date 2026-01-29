@@ -196,7 +196,7 @@ export default async function JournalsPage() {
                       {canApprove && journal.status === "approved" && (
                         <form action={postAction}>
                           <input type="hidden" name="journal_id" value={journal.id} />
-                          <Button type="submit" variant="outline">
+                          <Button type="submit">
                             Post
                           </Button>
                         </form>
