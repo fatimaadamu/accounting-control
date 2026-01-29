@@ -82,13 +82,33 @@ export default async function CtroPrintPackPage({
     throw new Error(lineError.message);
   }
 
-  const lineMap = new Map<string, typeof lines>();
-  for (const line of lines ?? []) {
-    const existing = lineMap.get(line.ctro_id) ?? [];
-    existing.push(line);
-    lineMap.set(line.ctro_id, existing);
-  }
+  const headerMap = new Map(headerList.map((header) => [header.id, header]));
+  const flattenedLines = (lines ?? []).map((line) => {
+    const header = headerMap.get(line.ctro_id);
+    return {
+      ...line,
+      ctro_no: header?.ctro_no ?? "-",
+      ctro_date: header?.ctro_date ?? null,
+    };
+  });
 
+  const distinctDates = new Set(
+    flattenedLines
+      .map((line) => line.ctro_date)
+      .filter((value) => value)
+  );
+  const showDateColumn = distinctDates.size > 1;
+  const singleDate = distinctDates.size === 1 ? (Array.from(distinctDates)[0] as string) : null;
+
+  const packTotals = flattenedLines.reduce(
+    (acc, line) => {
+      acc.totalBags += Number(line.bags ?? 0);
+      acc.totalTonnage += Number(line.tonnage ?? 0);
+      acc.grandTotal += Number(line.line_total ?? 0);
+      return acc;
+    },
+    { totalBags: 0, totalTonnage: 0, grandTotal: 0 }
+  );
   async function markPrintedAction(formData: FormData) {
     "use server";
     const selectedIds = formData
@@ -177,12 +197,6 @@ export default async function CtroPrintPackPage({
           td {
             padding: 3px 6px !important;
           }
-          .ctro-sheet {
-            page-break-after: always;
-          }
-          .ctro-sheet:last-child {
-            page-break-after: auto;
-          }
         }
       `}</style>
 
@@ -209,120 +223,89 @@ export default async function CtroPrintPackPage({
         </Link>
       </div>
 
-      {headerList.map((header) => {
-        const ctroLines = lineMap.get(header.id) ?? [];
-        const totals = ctroLines.reduce(
-          (acc, line) => {
-            acc.totalBags += Number(line.bags ?? 0);
-            acc.totalTonnage += Number(line.tonnage ?? 0);
-            acc.grandTotal += Number(line.line_total ?? 0);
-            return acc;
-          },
-          { totalBags: 0, totalTonnage: 0, grandTotal: 0 }
-        );
+      <div className="space-y-1">
+        <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
+        <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
+        <p className="text-sm font-medium">
+          DATE: {formatDate(singleDate)}
+        </p>
+      </div>
 
-        return (
-          <div key={header.id} className="ctro-sheet space-y-4">
-            <div className="space-y-1">
-              <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
-              <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
-              <p className="text-sm font-medium">DATE: {formatDate(header.ctro_date)}</p>
-            </div>
+      <table className="w-full border-collapse border border-zinc-200 text-xs">
+        <thead>
+          <tr className="bg-zinc-100">
+            <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Take-over Centre</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
+            {showDateColumn && (
+              <th className="border border-zinc-200 px-2 py-1 text-left">CTRO Date</th>
+            )}
+            <th className="border border-zinc-200 px-2 py-1 text-left">CWC</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert No</th>
+            <th className="border border-zinc-200 px-2 py-1 text-left">Purity Cert Date</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Evac / Tonne</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Take-over Price / Tonne</th>
+            <th className="border border-zinc-200 px-2 py-1 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flattenedLines.map((line) => (
+            <tr key={line.id}>
+              <td className="border border-zinc-200 px-2 py-1">
+                {(Array.isArray(line.depot)
+                  ? line.depot[0]?.name
+                  : (line.depot as { name?: string } | null)?.name) ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">
+                {(Array.isArray(line.center)
+                  ? line.center[0]?.name
+                  : (line.center as { name?: string } | null)?.name) ?? "-"}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1">{line.waybill_no ?? "-"}</td>
+              <td className="border border-zinc-200 px-2 py-1">{line.ctro_no ?? "-"}</td>
+              {showDateColumn && (
+                <td className="border border-zinc-200 px-2 py-1">{formatDate(line.ctro_date)}</td>
+              )}
+              <td className="border border-zinc-200 px-2 py-1">{line.cwc ?? "-"}</td>
+              <td className="border border-zinc-200 px-2 py-1">{line.purity_cert_no ?? "-"}</td>
+              <td className="border border-zinc-200 px-2 py-1">{formatDate(line.purity_cert_date)}</td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatBags(Number(line.bags ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatTonnage(Number(line.tonnage ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
+              </td>
+              <td className="border border-zinc-200 px-2 py-1 text-right">
+                {formatMoney(Number(line.line_total ?? 0))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-            <table className="w-full border-collapse border border-zinc-200 text-xs">
-              <thead>
-                <tr className="bg-zinc-100">
-                  <th className="border border-zinc-200 px-2 py-1 text-left">Depot</th>
-                  <th className="border border-zinc-200 px-2 py-1 text-left">
-                    Take-over Centre
-                  </th>
-                  <th className="border border-zinc-200 px-2 py-1 text-left">Waybill</th>
-                  <th className="border border-zinc-200 px-2 py-1 text-left">CTRO No</th>
-                  <th className="border border-zinc-200 px-2 py-1 text-left">CWC</th>
-                  <th className="border border-zinc-200 px-2 py-1 text-left">
-                    Purity Cert No
-                  </th>
-                  <th className="border border-zinc-200 px-2 py-1 text-left">
-                    Purity Cert Date
-                  </th>
-                  <th className="border border-zinc-200 px-2 py-1 text-right">Bags</th>
-                  <th className="border border-zinc-200 px-2 py-1 text-right">Tonnage</th>
-                  <th className="border border-zinc-200 px-2 py-1 text-right">
-                    Evac / Tonne
-                  </th>
-                  <th className="border border-zinc-200 px-2 py-1 text-right">
-                    Take-over Price / Tonne
-                  </th>
-                  <th className="border border-zinc-200 px-2 py-1 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ctroLines.map((line) => (
-                  <tr key={line.id}>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {(Array.isArray(line.depot)
-                        ? line.depot[0]?.name
-                        : (line.depot as { name?: string } | null)?.name) ?? "-"}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {(Array.isArray(line.center)
-                        ? line.center[0]?.name
-                        : (line.center as { name?: string } | null)?.name) ?? "-"}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {line.waybill_no ?? "-"}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {header.ctro_no ?? "-"}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {line.cwc ?? "-"}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {line.purity_cert_no ?? "-"}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1">
-                      {formatDate(line.purity_cert_date)}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1 text-right">
-                      {formatBags(Number(line.bags ?? 0))}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1 text-right">
-                      {formatTonnage(Number(line.tonnage ?? 0))}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1 text-right">
-                      {formatRate(Number(line.applied_secondary_evac_cost_per_tonne ?? 0))}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1 text-right">
-                      {formatRate(Number(line.applied_takeover_price_per_tonne ?? 0))}
-                    </td>
-                    <td className="border border-zinc-200 px-2 py-1 text-right">
-                      {formatMoney(Number(line.line_total ?? 0))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="grid gap-2 rounded-md border border-zinc-200 p-4 text-xs">
-              <div className="flex items-center justify-between">
-                <span>Total Bags</span>
-                <span className="font-medium">{formatBags(Number(totals.totalBags))}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Total Tonnage</span>
-                <span className="font-medium">
-                  {formatTonnage(Number(totals.totalTonnage))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
-                <span>GRAND TOTAL</span>
-                <span>{formatMoney(Number(totals.grandTotal))}</span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+      <div className="grid gap-2 rounded-md border border-zinc-200 p-4 text-xs">
+        <div className="flex items-center justify-between">
+          <span>Total Bags</span>
+          <span className="font-medium">{formatBags(Number(packTotals.totalBags))}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Total Tonnage</span>
+          <span className="font-medium">{formatTonnage(Number(packTotals.totalTonnage))}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
+          <span>GRAND TOTAL</span>
+          <span>{formatMoney(Number(packTotals.grandTotal))}</span>
+        </div>
+      </div>
     </div>
   );
 }
