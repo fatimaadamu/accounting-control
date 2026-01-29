@@ -151,6 +151,7 @@ export default async function CtroPrintCocoaBodPage({
         <h1 className="text-lg font-semibold">COCOA MARKETING COMPANY</h1>
         <p className="text-sm font-medium">COCOA HOUSE - ACCRA</p>
         <p className="text-sm font-medium">DATE: {formatDate(header.ctro_date)}</p>
+        <p className="text-sm font-medium">INVOICE NO: {header.ctro_no ?? "-"}</p>
       </div>
 
       <table className="w-full border-collapse border border-zinc-200 text-xs">
@@ -258,7 +259,7 @@ export default async function CtroPrintCocoaBodPage({
         </tfoot>
       </table>
 
-      <div className="grid gap-2 rounded-md border border-zinc-200 p-4 text-xs">
+      <div className="grid w-80 gap-1 rounded-md border border-zinc-200 p-3 text-xs">
         <div className="flex items-center justify-between">
           <span>Total Bags</span>
           <span className="font-medium">{formatBags(Number(computedTotals.totalBags))}</span>
@@ -269,26 +270,8 @@ export default async function CtroPrintCocoaBodPage({
             {formatTonnage4(Number(computedTotals.totalTonnage))}
           </span>
         </div>
-        <div className="flex items-center justify-between">
-          <span>Total Evacuation</span>
-          <span className="font-medium">
-            {formatMoney(Number(computedTotals.totalEvac))}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span>Total Producer Price</span>
-          <span className="font-medium">
-            {formatMoney(Number(computedTotals.totalProducer))}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span>Total Buyers&#39; Margin</span>
-          <span className="font-medium">
-            {formatMoney(Number(computedTotals.totalMargin))}
-          </span>
-        </div>
         <div className="flex items-center justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
-          <span>GRAND TOTAL</span>
+          <span>Grand Total</span>
           <span>{formatMoney(Number(computedTotals.grandTotal))}</span>
         </div>
       </div>
