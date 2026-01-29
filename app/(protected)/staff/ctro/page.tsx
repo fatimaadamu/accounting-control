@@ -131,7 +131,7 @@ export default async function CtroPage({
   const { data: ctroHeaders, error: ctroError } = await supabaseAdmin()
     .from("ctro_headers")
     .select(
-      "ctro_id:id, ctro_no, season, ctro_date, region, status, ctro_totals ( total_bags, total_tonnage, grand_total )"
+      "id, ctro_no, season, ctro_date, region, status, ctro_totals ( total_bags, total_tonnage, grand_total )"
     )
     .eq("company_id", companyId)
     .order("ctro_date", { ascending: false })
@@ -157,7 +157,7 @@ export default async function CtroPage({
       const total = Number(totals.grand_total ?? 0);
       return bags === 0 && tonnage === 0 && total === 0;
     })
-    .map((ctro) => ctro.ctro_id);
+    .map((ctro) => ctro.id);
 
   const computedTotals = new Map<
     string,
@@ -437,10 +437,10 @@ export default async function CtroPage({
                 ) : (
                 headers.map((ctro) => {
                   const totals = Array.isArray(ctro.ctro_totals) ? ctro.ctro_totals[0] : ctro.ctro_totals;
-                  const fallbackTotals = computedTotals.get(ctro.ctro_id);
+                  const fallbackTotals = computedTotals.get(ctro.id);
                   const displayTotals = totals ?? fallbackTotals;
                   return (
-                    <TableRow key={ctro.ctro_id}>
+                    <TableRow key={ctro.id}>
                       <TableCell>{ctro.ctro_date}</TableCell>
                       <TableCell>{ctro.ctro_no}</TableCell>
                       <TableCell>{ctro.season ?? "-"}</TableCell>
@@ -450,14 +450,14 @@ export default async function CtroPage({
                       <TableCell>{ctro.status}</TableCell>
                       <TableCell className="space-y-2">
                         <Link
-                          href={`/staff/ctro/${ctro.ctro_id}`}
+                          href={`/staff/ctro/${ctro.id}`}
                           className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                         >
                           View
                         </Link>
                         {ctro.status === "draft" && canSubmitDraft && (
                           <form action={submitAction}>
-                            <input type="hidden" name="ctro_id" value={ctro.ctro_id} />
+                            <input type="hidden" name="ctro_id" value={ctro.id} />
                             <Button type="submit" variant="outline">
                               Submit
                             </Button>
@@ -469,7 +469,7 @@ export default async function CtroPage({
                           canPostSubmitted &&
                           !missingCtroAccounts && (
                             <form action={submitAndPostAction}>
-                              <input type="hidden" name="ctro_id" value={ctro.ctro_id} />
+                              <input type="hidden" name="ctro_id" value={ctro.id} />
                               <Button type="submit">
                                 Submit &amp; Post
                               </Button>
@@ -477,7 +477,7 @@ export default async function CtroPage({
                           )}
                         {ctro.status === "submitted" && canPostSubmitted && !missingCtroAccounts && (
                           <form action={postAction}>
-                            <input type="hidden" name="ctro_id" value={ctro.ctro_id} />
+                            <input type="hidden" name="ctro_id" value={ctro.id} />
                             <Button type="submit" variant="outline">
                               Post
                             </Button>
@@ -485,7 +485,7 @@ export default async function CtroPage({
                         )}
                         {ctro.status === "draft" && canDeleteDraft && (
                           <form action={deleteAction}>
-                            <input type="hidden" name="ctro_id" value={ctro.ctro_id} />
+                            <input type="hidden" name="ctro_id" value={ctro.id} />
                             <Button type="submit" variant="ghost">
                               Delete
                             </Button>
