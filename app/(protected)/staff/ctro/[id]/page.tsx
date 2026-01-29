@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import ToastMessage from "@/components/toast-message";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,9 @@ export default async function CtroDetailPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireUser();
+  if (!params?.id || params.id === "undefined") {
+    notFound();
+  }
   const companyId = await ensureActiveCompanyId(user.id, `/staff/ctro/${params.id}`);
 
   if (!companyId) {

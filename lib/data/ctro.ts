@@ -3,6 +3,9 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const getCtroById = async (ctroId: string, companyId?: string) => {
+  if (!ctroId || ctroId === "undefined") {
+    throw new Error("CTRO not found.");
+  }
   const { data: header, error: headerError } = await supabaseAdmin()
     .from("ctro_headers")
     .select(
