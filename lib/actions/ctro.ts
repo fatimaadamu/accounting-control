@@ -232,6 +232,15 @@ export const createCtroDraft = async (payload: {
     throw new Error(error?.message ?? "Unable to create CTRO.");
   }
 
+  const { error: deleteLineError } = await supabaseAdmin()
+    .from("ctro_lines")
+    .delete()
+    .eq("ctro_id", header.id);
+
+  if (deleteLineError) {
+    throw new Error(deleteLineError.message);
+  }
+
   const { error: lineError } = await supabaseAdmin().from("ctro_lines").insert(
     normalizedLines.map((line) => ({
       ctro_id: header.id,
